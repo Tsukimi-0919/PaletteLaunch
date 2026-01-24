@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="style.css">
+
+    <link id="theme-link" rel="stylesheet" href="themes/valorant.css">
+
+    <title>PALETTE LAUNCH</title>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&family=Silkscreen:wght@400;700&family=Cinzel:wght@400;900&family=Noto+Sans+JP:wght@400;700&display=swap"
+        rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&family=Teko:wght@400;700&family=Shippori+Mincho:wght@400;700&family=Silkscreen:wght@400;700&family=Cinzel:wght@400;900&family=Noto+Sans+JP:wght@400;700&display=swap"
+        rel="stylesheet">
+</head>
+
+
+<body>
+    <div class="launcher-shell">
+        <header>
+            <h1>PALETTE LAUNCH</h1>
+            <div class="header-controls">
+                <select id="lang-select" onchange="changeLanguage(this.value)">
+                    <option value="ja">日本語</option>
+                    <option value="en">English</option>
+                </select>
+                <select id="theme-select" onchange="changeTheme(this.value)" style="margin-right:10px;">
+                </select>
+                <button class="add-cat-btn" onclick="addCategory()">+ CATEGORY</button>
+            </div>
+        </header>
+
+        <main id="app-container">
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

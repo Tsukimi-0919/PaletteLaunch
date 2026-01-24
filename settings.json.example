@@ -1,0 +1,13 @@
+{
+    "config": {
+        "theme": "valorant",
+        "language": "ja"
+    },
+    "categories": [
+        {
+            "id": "sample-category-id",
+            "name": "サンプルカテゴリ",
+            "shortcuts": []
+        }
+    ]
+}

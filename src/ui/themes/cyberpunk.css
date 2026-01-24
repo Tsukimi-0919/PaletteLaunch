@@ -1,0 +1,97 @@
+:root {
+    /* メインカラー */
+    --bg-color: #0a0a0b;
+    /* 深い黒 */
+    --accent-color: #fcee0a;
+    /* サイバーイエロー */
+    --text-color: #00f3ff;
+    /* ネオンブルー */
+    --text-dark: #000000;
+    /* 暗い背景用の黒文字（黄色背景などで使用） */
+    --text-light: #ffffff;
+    /* 明るい文字 */
+
+    /* カード・セクション */
+    --card-bg: rgba(20, 20, 20, 0.8);
+    --border-color: #333;
+    --neon-pink: #ff003f;
+}
+
+/* 全体背景 */
+body {
+    background: var(--bg-color);
+    color: var(--text-light);
+    font-family: 'Orbitron', sans-serif;
+}
+
+/* カテゴリーヘッダーの改善 */
+.category-header {
+    background-color: var(--accent-color);
+    /* 黄色背景 */
+    color: var(--text-dark) !important;
+    /* ここを強制的に黒文字に */
+    padding: 10px 15px;
+    border-left: 8px solid var(--neon-pink);
+    clip-path: polygon(0 0, 100% 0, 98% 100%, 0% 100%);
+    /* 少し斜めにする */
+    margin-bottom: 20px;
+}
+
+/* カテゴリータイトル（黄色背景の上） */
+.category-title {
+    color: var(--text-dark) !important;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+/* カテゴリー内のボタン（黄色背景の上にある場合） */
+.category-actions .action-btn {
+    background: var(--text-dark);
+    color: var(--accent-color);
+    border: none;
+    font-weight: bold;
+}
+
+/* ショートカットアイテム（暗い背景） */
+.shortcut-item {
+    background: var(--card-bg);
+    border: 1px solid var(--text-color);
+    color: var(--text-color);
+    /* ここを水色にして視認性を上げる */
+    transition: all 0.3s ease;
+    padding: 15px;
+}
+
+.category-title,
+.shortcut-item span {
+    /* Orbitron は SF映画や近未来ゲームでよく使われるスタイルです */
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 2px;
+}
+
+/* 「＋カテゴリー」ボタン、およびカテゴリー内の操作ボタンを黒文字にする */
+.add-cat-btn,
+.category-actions .action-btn {
+    background-color: var(--text-dark) !important;
+    /* ボタン自体を黒にする */
+    color: var(--accent-color) !important;
+    /* 文字を黄色にする */
+    border: 1px solid var(--text-dark);
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+/* ホバーした時に色を反転させる（サイバーパンク風演出） */
+.add-cat-btn:hover,
+.category-actions .action-btn:hover {
+    background-color: var(--accent-color) !important;
+    color: var(--text-dark) !important;
+    box-shadow: 0 0 10px var(--accent-color);
+    cursor: pointer;
+}
+
+.placeholder-text {
+    font-weight: 900;
+    font-style: italic;
+}

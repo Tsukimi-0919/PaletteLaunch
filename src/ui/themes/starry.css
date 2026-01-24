@@ -1,0 +1,84 @@
+:root {
+    /* 深い夜空と輝きのパレット */
+    --bg-color: #050b18;
+    /* 深紺色（宇宙の底） */
+    --accent-color: #f9d976;
+    /* 月や星の黄金色 */
+    --star-white: #ffffff;
+    --card-bg: rgba(255, 255, 255, 0.05);
+    /* 非常に薄い白（ガラスのような質感） */
+    --text-color: #e0e6ed;
+    --border-glow: rgba(130, 170, 255, 0.3);
+}
+
+/* 全体背景：宇宙のグラデーション */
+body {
+    background: linear-gradient(135deg, #050b18 0%, #0d1b33 50%, #1a2a44 100%);
+    color: var(--text-color);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-family: 'Noto Sans JP', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* カテゴリーヘッダー：天の川のような帯 */
+.category-header {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    border-top: 1px solid var(--border-glow);
+    border-bottom: 1px solid var(--border-glow);
+    padding: 15px 0;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.category-title {
+    color: var(--star-white) !important;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px var(--accent-color);
+    font-weight: 300;
+    /* 細めのフォントで繊細さを出す */
+    letter-spacing: 8px;
+    text-transform: uppercase;
+}
+
+/* ショートカットアイテム：浮かぶ星々 */
+.shortcut-item {
+    background: var(--card-bg);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(5px);
+    /* 背景をぼかしてグラスモーフィズム風に */
+    border-radius: 15px;
+    /* 丸みを持たせて柔らかく */
+    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+/* ホバー：星が輝くような演出 */
+.shortcut-item:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 20px rgba(249, 217, 118, 0.4);
+    transform: translateY(-5px) scale(1.02);
+}
+
+/* アイコンがない時の文字 */
+.placeholder-text {
+    color: var(--accent-color);
+    text-shadow: 0 0 8px var(--accent-color);
+}
+
+/* ボタン：月光のボタン */
+.add-cat-btn,
+.action-btn {
+    background: transparent !important;
+    color: var(--text-color) !important;
+    border: 1px solid var(--text-color) !important;
+    border-radius: 20px;
+    padding: 5px 20px;
+    transition: 0.3s;
+}
+
+.add-cat-btn:hover,
+.action-btn:hover {
+    background: var(--text-color) !important;
+    color: var(--bg-color) !important;
+    box-shadow: 0 0 15px var(--text-color);
+}

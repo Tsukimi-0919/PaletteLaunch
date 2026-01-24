@@ -1,0 +1,14 @@
+{
+    "app_title": "PALETTE LAUNCH",
+    "add_category": "+ カテゴリー",
+    "add_app": "+ アプリ",
+    "delete": "削除",
+    "theme_label": "テーマ:",
+    "error_launch": "アプリの起動に失敗しました。",
+    "prompt_category_name": "カテゴリー名を入力してください:",
+    "prompt_edit_category": "カテゴリー名を変更:",
+    "prompt_confirm_app_name": "アプリ名を確認:",
+    "prompt_new_name": "新しい名前を入力してください:",
+    "confirm_delete_shortcut": "このショートカットを削除しますか？",
+    "confirm_delete_category": "このカテゴリーを削除しますか？（中のショートカットもすべて消去されます）"
+}
