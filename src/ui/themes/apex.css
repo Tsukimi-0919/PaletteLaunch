@@ -1,0 +1,100 @@
+:root {
+    --bg-color: #1e1e1e;
+    --accent-color: #cc3333;
+    /* 朱色 */
+    --sub-accent: #ffb400;
+    /* レジェンダリーイエロー */
+    --card-bg: #2a2a2a;
+    --text-main: #ffffff;
+    /* メインの文字は「完全な白」 */
+    --text-sub: #b0b0b0;
+    /* 補足情報は「明るいグレー」 */
+}
+
+body {
+    background: var(--bg-color);
+    color: var(--text-main);
+    /* 全体の文字色を白に設定 */
+    font-family: 'Teko', 'Noto Sans JP', sans-serif;
+    letter-spacing: 1px;
+}
+
+/* カテゴリーヘッダー：視認性アップ */
+.category-header {
+    background: repeating-linear-gradient(45deg,
+            #151515,
+            #151515 10px,
+            #1e1e1e 10px,
+            #1e1e1e 20px);
+    border-left: 5px solid var(--accent-color);
+    border-bottom: 2px solid #333;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+}
+
+.category-title {
+    font-size: 2rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-main) !important;
+    /* 背景が暗いので白を強制 */
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    /* 視認性をさらに確保 */
+}
+
+/* ショートカットアイテム：鉄板の質感を出しつつ文字を明るく */
+.shortcut-item {
+    border-radius: 4px;
+    border: 2px solid #444;
+    /* 少し明るくして境目を出す */
+    background: linear-gradient(135deg, #3a3a3a 0%, #222222 100%);
+    color: var(--text-main);
+    padding: 15px;
+    transition: all 0.2s ease;
+}
+
+/* アプリ名のテキスト */
+.shortcut-item span {
+    display: block;
+    margin-top: 10px;
+    font-size: 1.2rem;
+    color: var(--text-main);
+    /* 文字を白に */
+    text-transform: uppercase;
+}
+
+/* ホバー：レジェンダリーな輝き */
+.shortcut-item:hover {
+    border-color: var(--sub-accent);
+    background: linear-gradient(135deg, #444, #2a2a2a);
+    box-shadow: 0 0 20px rgba(255, 180, 0, 0.4);
+    transform: skewX(-3deg) translateY(-2px);
+    /* 少し強く斜めにする */
+    color: var(--sub-accent);
+    /* ホバー時に文字を黄色に */
+}
+
+/* アイコンがない時の文字 */
+.placeholder-text {
+    color: var(--accent-color);
+    font-size: 32px;
+    font-weight: bold;
+}
+
+/* 追加：ボタンもApexのロビー風に */
+.add-cat-btn,
+.action-btn {
+    background: transparent !important;
+    color: var(--text-main) !important;
+    border: 2px solid var(--text-main) !important;
+    font-family: 'Teko', sans-serif;
+    text-transform: uppercase;
+    font-size: 1.2rem;
+    padding: 5px 15px;
+}
+
+.add-cat-btn:hover {
+    background: var(--text-main) !important;
+    color: var(--bg-color) !important;
+}

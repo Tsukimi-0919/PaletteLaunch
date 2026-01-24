@@ -1,0 +1,141 @@
+:root {
+    --bg-color: #0f1923;
+    /* VALORANTダークグレー */
+    --accent-color: #ff4655;
+    /* ヴァロレッド */
+    --text-main: #ece8e1;
+    /* ヴァロオフホワイト */
+    --bg-dark: #080e14;
+    /* さらに濃いネイビー */
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    /* 全体の文字をオフホワイトに強制 */
+    font-family: 'Orbitron', 'Noto Sans JP', sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+
+/* カテゴリーヘッダー：赤背景に黒文字でインパクトを出す */
+.category-header {
+    background-color: var(--accent-color);
+    clip-path: polygon(0 0, 100% 0, 98% 100%, 0% 100%);
+    padding: 12px 25px;
+    margin-bottom: 25px;
+    display: flex;
+    align-items: center;
+}
+
+.category-title {
+    color: var(--bg-color) !important;
+    /* 赤背景の上なので「黒に近い紺」 */
+    font-weight: 900;
+    font-size: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+}
+
+/* ショートカットアイテム：暗い背景に白文字 */
+.shortcut-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    /* 縦方向も中央に */
+    height: 120px;
+    /* 高さを固定している場合はここを確認 */
+    padding: 15px;
+    position: relative;
+    background-color: rgba(236, 232, 225, 0.03);
+    /* わずかに明るいグレー */
+    border: 1px solid rgba(236, 232, 225, 0.2);
+    /* 枠線をオフホワイトに */
+    border-radius: 0;
+    color: var(--text-main);
+    /* 文字を白に */
+    transition: all 0.15s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 角の赤いアクセント（装飾） */
+.shortcut-item::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    background: var(--accent-color);
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.shortcut-item span {
+    color: var(--text-main) !important;
+    /* 日本語名も白にする */
+    font-weight: 700;
+    display: block;
+    margin-top: 8px;
+    font-size: 0.9rem;
+    text-align: center;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ホバー：ヴァロ特有のパキッとした反転 */
+.shortcut-item:hover {
+    background-color: var(--text-main);
+    color: var(--bg-color);
+    /* 背景が白くなるので文字は紺 */
+    box-shadow: -6px 6px 0px var(--accent-color);
+    /* 赤いズレた影 */
+    transform: translate(3px, -3px);
+}
+
+.shortcut-item:hover span {
+    color: var(--bg-color) !important;
+    /* ホバー時は文字を黒（紺）に反転 */
+}
+
+/* アイコンがない時の文字 */
+.placeholder-text {
+    color: var(--accent-color) !important;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 36px;
+    font-weight: 900;
+
+    /* 下に寄るのを防ぐための調整 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    /* 行間の余白をゼロにする */
+    margin: 0;
+    padding: 0;
+
+    /* Orbitronフォント特有の「見た目上のズレ」を数ピクセル上に補正 */
+    transform: translateY(-4px);
+
+    text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.5);
+}
+
+/* ボタン類：ミリタリー・タクティカル風 */
+.add-cat-btn,
+.action-btn {
+    background: transparent !important;
+    color: var(--text-main) !important;
+    border: 1px solid var(--text-main) !important;
+    text-transform: uppercase;
+    font-family: 'Orbitron', sans-serif;
+    padding: 8px 20px;
+    cursor: pointer;
+}
+
+.add-cat-btn:hover {
+    background: var(--accent-color) !important;
+    border-color: var(--accent-color) !important;
+}

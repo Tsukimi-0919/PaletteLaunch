@@ -1,0 +1,80 @@
+:root {
+    /* 黄昏から夜へ移り変わる瞬間のパレット */
+    --bg-color: #1e152a;
+    /* 深い藤色（夜の入り口） */
+    --accent-color: #a78bfa;
+    /* 鮮やかなラベンダー（残光） */
+    --sub-accent: #f472b6;
+    /* わずかに残る夕日のピンク */
+    --text-main: #f5f3ff;
+    /* 透き通った白紫 */
+    --card-bg: rgba(46, 30, 66, 0.4);
+}
+
+body {
+    /* 上から下へ、夜が降りてくるようなグラデーション */
+    background: linear-gradient(180deg, #2e1e42 0%, #1e152a 100%);
+    color: var(--text-main);
+    font-family: 'Shippori Mincho', serif;
+    min-height: 100vh;
+}
+
+/* カテゴリーヘッダー：薄明光線のような帯 */
+.category-header {
+    background: linear-gradient(90deg, transparent, rgba(167, 139, 250, 0.15), transparent);
+    border-top: 1px solid rgba(167, 139, 250, 0.4);
+    border-bottom: 1px solid rgba(167, 139, 250, 0.4);
+    padding: 20px 0;
+    margin-bottom: 30px;
+}
+
+.category-title {
+    color: var(--text-main) !important;
+    font-weight: 700;
+    letter-spacing: 0.25em;
+    /* 星の瞬きのようなグロー効果 */
+    text-shadow: 0 0 15px var(--accent-color), 2px 2px 4px rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+
+/* ショートカットアイテム：夜に浮かぶ紫陽花のシルエット */
+.shortcut-item {
+    background: var(--card-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(167, 139, 250, 0.2);
+    border-radius: 40% 10% 40% 10% / 10% 40% 10% 40%;
+    /* 複雑な花の重なりをイメージ */
+    transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/* ホバー：夜露が光を反射するように */
+.shortcut-item:hover {
+    background: rgba(167, 139, 250, 0.1);
+    border-color: var(--sub-accent);
+    box-shadow: 0 0 25px rgba(244, 114, 182, 0.3);
+    transform: translateY(-5px) rotate(-1deg);
+}
+
+/* アイコンがない時の文字 */
+.placeholder-text {
+    color: var(--accent-color);
+    text-shadow: 0 0 10px var(--accent-color);
+}
+
+/* ボタン：夜の静寂に馴染む繊細なライン */
+.add-cat-btn,
+.action-btn {
+    background: transparent !important;
+    color: var(--text-main) !important;
+    border: 1px solid rgba(167, 139, 250, 0.5) !important;
+    border-radius: 4px;
+    font-family: 'Shippori Mincho', serif;
+    transition: 0.3s;
+}
+
+.add-cat-btn:hover {
+    background: linear-gradient(45deg, var(--accent-color), var(--sub-accent)) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+    box-shadow: 0 0 20px rgba(167, 139, 250, 0.5);
+}

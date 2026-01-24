@@ -1,0 +1,84 @@
+:root {
+    /* 深海や夜の森をイメージした神秘的なパレット */
+    --bg-color: #0a0f1d;
+    /* 闇に近い紺 */
+    --accent-color: #4facfe;
+    /* 魔法のように光る水色 */
+    --sub-accent: #a18cd1;
+    /* 霧のような薄紫 */
+    --text-main: #e0e7ff;
+    /* 月光のような青白い白 */
+    --card-bg: rgba(255, 255, 255, 0.03);
+}
+
+body {
+    /* 霧がかった深いグラデーション */
+    background: radial-gradient(circle at center, #1e3a5f 0%, #0a0f1d 100%);
+    color: var(--text-main);
+    font-family: 'Shippori Mincho', serif;
+    min-height: 100vh;
+    letter-spacing: 0.05em;
+}
+
+/* カテゴリーヘッダー：水面に浮かぶ光のような演出 */
+.category-header {
+    background: linear-gradient(90deg, transparent, rgba(79, 172, 254, 0.1), transparent);
+    border-top: 1px solid rgba(79, 172, 254, 0.3);
+    border-bottom: 1px solid rgba(79, 172, 254, 0.3);
+    padding: 20px 0;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.category-title {
+    color: var(--text-main) !important;
+    font-weight: 700;
+    /* 露のように光るテキスト */
+    text-shadow: 0 0 10px rgba(79, 172, 254, 0.8), 0 0 20px rgba(161, 140, 209, 0.5);
+    letter-spacing: 0.2em;
+}
+
+/* ショートカットアイテム：水滴や結晶のような透明感 */
+.shortcut-item {
+    background: var(--card-bg);
+    backdrop-filter: blur(12px);
+    /* 強いボカシで神秘性を出す */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50% 5px 50% 5px;
+    /* 非対称な花びらの形 */
+    transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+    box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.02);
+}
+
+/* ホバー：冷たい光が灯るような演出 */
+.shortcut-item:hover {
+    background: rgba(79, 172, 254, 0.1);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 25px rgba(79, 172, 254, 0.3), inset 0 0 10px rgba(255, 255, 255, 0.1);
+    transform: translateY(-8px) rotate(1deg);
+    /* わずかに揺れるような動き */
+}
+
+/* アイコンがない時の文字 */
+.placeholder-text {
+    color: var(--accent-color);
+    opacity: 0.7;
+    filter: drop-shadow(0 0 5px var(--accent-color));
+}
+
+/* ボタン：露に濡れた石のような質感 */
+.add-cat-btn,
+.action-btn {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: var(--text-main) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 30px;
+    backdrop-filter: blur(5px);
+    transition: 0.4s;
+}
+
+.add-cat-btn:hover {
+    background: var(--accent-color) !important;
+    color: var(--bg-color) !important;
+    box-shadow: 0 0 15px var(--accent-color);
+}

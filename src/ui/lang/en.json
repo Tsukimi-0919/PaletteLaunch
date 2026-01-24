@@ -1,0 +1,16 @@
+{
+    "app_title": "PALETTE LAUNCH",
+    "add_category": "+ CATEGORY",
+    "add_app": "+ APP",
+    "delete": "DELETE",
+    "theme_label": "THEME:",
+    "error_launch": "Failed to launch the application.",
+    "prompt_category_name": "Enter category name:",
+    "prompt_edit_category": "Edit Category Name:",
+    "prompt_rename": "Enter new name:",
+    "prompt_confirm_app_name": "Confirm app name:",
+    "prompt_new_name": "Enter new name:",
+    "confirm_delete": "Are you sure you want to delete this?",
+    "confirm_delete_shortcut": "Are you sure you want to delete this shortcut?",
+    "confirm_delete_category": "Are you sure you want to delete this category? (All shortcuts inside will be removed)"
+}

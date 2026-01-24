@@ -1,0 +1,128 @@
+:root {
+    /* 暁（あかつき）の空のような神秘的なピンクパレット */
+    --bg-color: #fff5f7;
+    /* 霞がかった桜色 */
+    --accent-color: #ffb7c5;
+    /* 柔らかなサクラピンク */
+    --sub-accent: #d8b4fe;
+    /* 暁の空に混ざる薄紫 */
+    --text-main: #5f4b5e;
+    /* 落ち着いた葡萄色の文字 */
+    --card-bg: rgba(255, 255, 255, 0.4);
+}
+
+body {
+    /* 柔らかな光が差し込むようなグラデーション */
+    background: radial-gradient(circle at top right, #ffffff 0%, #fff5f7 50%, #fce7f3 100%);
+    color: var(--text-main);
+    font-family: 'Shippori Mincho', serif;
+    min-height: 100vh;
+}
+
+/* カテゴリーヘッダー：朝露に濡れた花びらの重なり */
+.category-header {
+    background: linear-gradient(90deg, transparent, rgba(255, 183, 197, 0.2), transparent);
+    border-top: 1px dashed var(--accent-color);
+    border-bottom: 1px dashed var(--accent-color);
+    padding: 25px 0;
+    margin-bottom: 35px;
+}
+
+.category-title {
+    color: var(--text-main) !important;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    /* 白い光のヴェールを纏ったような影 */
+    text-shadow: 0 0 10px #fff, 0 0 20px rgba(255, 183, 197, 0.5);
+    text-align: center;
+}
+
+/* ショートカットアイテム：真珠のような光沢と透明感 */
+.shortcut-item {
+    background: var(--card-bg);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 50% 50% 10% 10% / 80% 80% 20% 20%;
+    /* ぽってりとした花びら */
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 10px 30px rgba(255, 183, 197, 0.1);
+    background: rgba(255, 245, 247, 0.5) !important;
+    /* 淡いピンクの半透明 */
+    border: 1px solid rgba(255, 255, 255, 0.8) !important;
+}
+
+/* ホバー：花がほころび、光が漏れるような演出 */
+.shortcut-item:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: var(--sub-accent);
+    box-shadow: 0 15px 35px rgba(216, 180, 254, 0.3);
+    transform: translateY(-5px) scale(1.03);
+}
+
+/* アプリ名のテキストも黒から葡萄色へ */
+.shortcut-item span {
+    color: var(--text-main) !important;
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+    font-weight: 600;
+}
+
+/* アイコンがない時の文字 */
+.placeholder-text {
+    color: var(--accent-color);
+    filter: drop-shadow(0 0 3px #fff);
+    font-style: italic;
+    color: var(--text-main) !important;
+    /* 落ち着いた葡萄色 */
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.9), 0 0 5px var(--accent-color);
+    font-family: 'Shippori Mincho', serif;
+    font-weight: 900;
+    opacity: 0.9;
+}
+
+/* ボタン：クリスタルのような透き通ったデザイン */
+.add-cat-btn,
+.action-btn {
+    background: rgba(255, 255, 255, 0.3) !important;
+    color: var(--text-main) !important;
+    border: 1px solid var(--accent-color) !important;
+    border-radius: 25px;
+    font-family: 'Shippori Mincho', serif;
+    transition: 0.3s;
+}
+
+.add-cat-btn:hover {
+    background: var(--accent-color) !important;
+    color: #fff !important;
+    box-shadow: 0 0 15px rgba(255, 183, 197, 0.6);
+}
+
+/* --- 編集・削除ボタンの改善（ピンクの世界観に統一） --- */
+
+.edit-btn,
+.delete-btn,
+.action-btn {
+    background: rgba(255, 255, 255, 0.4) !important;
+    backdrop-filter: blur(5px);
+    border: 1px solid var(--accent-color) !important;
+    color: var(--text-main) !important;
+    border-radius: 15px;
+    font-family: 'Shippori Mincho', serif;
+}
+
+.edit-btn:hover,
+.action-btn:hover {
+    background: var(--accent-color) !important;
+    color: #fff !important;
+    box-shadow: 0 0 15px rgba(255, 183, 197, 0.5);
+}
+
+/* 削除ボタンは少し濃いピンクに */
+.delete-btn {
+    border-color: #f472b6 !important;
+    color: #db2777 !important;
+}
+
+.delete-btn:hover {
+    background: #db2777 !important;
+    color: #fff !important;
+}
