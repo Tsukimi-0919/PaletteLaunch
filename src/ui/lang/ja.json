@@ -1,5 +1,7 @@
 {
     "app_title": "PALETTE LAUNCH",
+    "size_small": "小",
+    "size_medium": "標準",
     "add_category": "+ カテゴリー",
     "add_app": "+ アプリ",
     "delete": "削除",

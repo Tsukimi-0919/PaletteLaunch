@@ -6,6 +6,7 @@ import os
 import uuid
 import webview
 import json
+import sys
 
 from src.core.config import ConfigManager
 from src.core.launcher import launch_app
@@ -23,6 +24,15 @@ class API:
         self.load_settings()
         # 設定ファイルの管理クラスをインスタンス化
         self.config = ConfigManager(self.settings_path)
+
+    def update_setting(self, key, value):
+        """テーマと言語設定を更新して保存する"""
+        try:
+            self.config.update_setting(key, value)
+            return True
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            print(f"設定更新エラー: {e}")
+            return False
 
     def load_settings(self):
         # 今まで 'settings.json' と直接書いていた部分を self.settings_path に変える
@@ -173,21 +183,26 @@ class API:
         return True
 
     def get_themes(self):
-        """themesフォルダ内のCSSファイル名を取得してリストで返す"""
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        themes_dir = os.path.join(base_dir, "ui", "themes")
+        """themesフォルダ内のCSSファイル名を取得"""
+        # API.py から見た相対パスではなく、実行環境に合わせたパス取得が必要
+        # main.py で使った get_resource_path をここでも使えるようにするか、
+        # sys._MEIPASS を考慮したパス解決を行います。
+        if getattr(sys, 'frozen', False):
+            # EXE実行時
+            base_dir = sys._MEIPASS
+        else:
+            # スクリプト実行時（api.py が src/ にあるなら、親の親がルート）
+            base_dir = os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__)))
+
+        themes_dir = os.path.join(base_dir, "src", "ui", "themes")
 
         try:
+            if not os.path.exists(themes_dir):
+                return ["valorant", "hydrangea_blue"]  # フォールバック
+
             files = [f.replace(".css", "") for f in os.listdir(
                 themes_dir) if f.endswith(".css")]
             return files
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             return ["valorant"]
-
-    def update_setting(self, key, value):
-        """テーマと言語設定を更新して保存する"""
-        try:
-            self.config.update_setting(key, value)
-            return True
-        except Exception:  # pylint: disable=broad-exception-caught
-            return False
