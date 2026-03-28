@@ -22,18 +22,46 @@ body {
     height: 100vh;
 }
 
+/* --- ヘッダー（タイトルエリア）の調整 --- */
 header {
-    padding: 30px 60px;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.1);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: 10px 20px;
+    height: 60px;
+    box-sizing: border-box;
+    /* 背景の透過度を少し上げると、よりパネルエリアとの境界が自然になります */
+    background: rgba(85, 54, 54, 0.2);
+    backdrop-filter: blur(10px);
 }
 
+/* タイトルロゴのサイズも少し小さくしてバランスを取る */
+header h1 {
+    font-size: 1.5rem;
+    /* 2remから少しダウン */
+    margin: 0;
+    line-height: 1;
+}
+
+/* --- メインコンテンツエリア --- */
 main {
-    flex: 1;
-    padding: 20px 60px;
+    /* ヘッダーの高さ(60px)を引いた全画面表示 */
+    height: calc(100vh - 60px);
+    padding: 20px;
     overflow-y: auto;
+    /* パネルが増えてもスクロール可能に */
+    box-sizing: border-box;
+}
+
+/* スクロールバーのカスタマイズ（テーマの世界観を壊さない細身のデザイン） */
+main::-webkit-scrollbar {
+    width: 6px;
+}
+
+main::-webkit-scrollbar-thumb {
+    background: var(--accent-color);
+    border-radius: 10px;
+    opacity: 0.5;
 }
 
 /* ==========================================================================
@@ -79,28 +107,107 @@ main {
 /* ==========================================================================
    ショートカットカード
    ========================================================================== */
+/* デフォルト設定（中サイズ） */
+:root {
+    --card-width: 160px;
+    --card-height: 120px;
+    --icon-size: 48px;
+    --font-size-name: 0.9rem;
+}
+
+/* サイズ別のクラス定義 */
+.size-small {
+    --card-width: 64px;
+    --card-height: 64px;
+    --icon-size: 40px;
+    --font-size-name: 0px;
+}
+
+.size-medium {
+    /* デフォルトと同じなので空でもOKですが、明示的に書くと管理しやすいです */
+    --card-width: 160px;
+    --card-height: 120px;
+    --icon-size: 48px;
+    --font-size-name: 0.9rem;
+}
+
 .shortcut-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-width), 1fr));
     gap: 25px;
+    /* サイズ「小」のときは、gap（隙間）も少し詰めるとさらに多く表示できます */
     padding-bottom: 15px;
-    /* 既存の25pxより少し広げて、スクロール時も余裕を持たせる */
     min-height: 80px;
-    /* 空のカテゴリーにドロップしやすくするための「受け皿」 */
+}
+
+/* サイズ「小」のときは gap を少し詰める */
+#app-container.size-small .shortcut-grid {
+    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+}
+
+/* カードの中の余白（padding）を消す */
+#app-container.size-small .shortcut-item {
+    padding: 0;
+    /* 余白をゼロに */
+    justify-content: center;
+    align-items: center;
+}
+
+/* 「小」の時、アイコン下のマージンをなくして中央に配置 */
+#app-container.size-small .icon-container {
+    margin-bottom: 0;
+    width: var(--icon-size);
+    height: var(--icon-size);
+}
+
+/* 操作ボタン（編集・削除）が「小」だと大きすぎる場合の調整 */
+#app-container.size-small .item-controls {
+    transform: scale(0.7);
+    /* ボタンを70%の大きさに縮小 */
+    top: -5px;
+    right: -5px;
+}
+
+/* ★ここが重要：親要素(#app-container)に .size-small クラスがあるとき、
+   その中の .shortcut-item span を非表示（透明）にする */
+#app-container.size-small .shortcut-item span {
+    opacity: 0;
+    /* 透明にする（消える） */
+    height: 0;
+    /* 高さをなくす（文字があったスペースを詰める） */
+    margin: 0;
+    /* マージンもなくす */
+    pointer-events: none;
+    /* 透明な文字をクリック不可にする */
 }
 
 /* カード全体の調整 */
 .shortcut-item {
     background: var(--card-bg);
-    padding: 25px 15px;
+    /* paddingを固定値から少し柔軟に（サイズが小さい時に文字がはみ出ないよう調整） */
+    padding: 15px;
     border-radius: 8px;
     clip-path: var(--card-shape);
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
+    /* 中央寄せを強化 */
     position: relative;
-    /* ボタンの絶対配置の基準になるため必須 */
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* JSで付与される変数を使う */
+    width: var(--card-width);
+    height: var(--card-height);
+}
+
+.shortcut-item img,
+.placeholder-text {
+    width: var(--icon-size);
+    height: var(--icon-size);
+    font-size: calc(var(--icon-size) * 0.8);
+    /* アイコンサイズに比例させる */
 }
 
 .shortcut-item:hover {
@@ -112,13 +219,13 @@ main {
 
 /* アイコン：大きく、かつ綺麗に見せる */
 .icon-container {
-    width: 64px;
-    height: 64px;
+    /* 固定値(64px)を廃止し、変数にする */
+    width: var(--icon-size);
+    height: var(--icon-size);
     margin-bottom: 12px;
     display: flex;
     justify-content: center;
     align-items: center;
-    /* 影をつけてアイコンを立体的に */
     filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
 }
 
@@ -130,19 +237,23 @@ main {
 
 /* アプリ名のテキスト */
 .shortcut-item span {
-    font-size: 0.9rem;
+    font-size: var(--font-size-name);
+    /* ここを変数にする */
     font-weight: 500;
     text-align: center;
     word-break: break-all;
     max-width: 100%;
+    margin-top: 5px;
+    /* サイズ変更を滑らかにする transition があると、
+       文字がスーッと消えるような効果になります */
+    transition: opacity 0.2s ease-in-out;
 }
 
 /* アイコンの代わりになる枠の設定 */
 .icon-placeholder {
-    width: 48px;
-    height: 48px;
+    width: var(--icon-size);
+    height: var(--icon-size);
     background-color: #444;
-    /* 背景色はお好みで */
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -152,13 +263,46 @@ main {
 
 /* 文字を大きくする設定 */
 .placeholder-text {
-    font-size: 24px;
-    /* 以前より大きく調整 */
+    font-size: calc(var(--icon-size) * 0.5);
+    /* アイコンの半分くらいのサイズに */
     font-weight: bold;
     color: #ffffff;
     text-transform: uppercase;
     user-select: none;
-    /* 文字を選択不可にする */
+}
+
+/* 設定項目のラベルとセレクトボックスの基本スタイル */
+.setting-item {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.theme-select {
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-family: inherit;
+    cursor: pointer;
+    backdrop-filter: blur(5px);
+}
+
+/* Valorantテーマの時は角を鋭く */
+.valorant .theme-select {
+    border-radius: 0;
+    border-left: 4px solid var(--accent-color);
+    text-transform: uppercase;
+}
+
+/* Hydrangeaテーマの時はより透明感と丸みを */
+.hydrangea .theme-select,
+.hydrangea_pink .theme-select {
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 20px;
+    border-color: var(--accent-color);
 }
 
 /* ==========================================================================

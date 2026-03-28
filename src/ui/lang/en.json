@@ -1,6 +1,8 @@
 {
     "app_title": "PALETTE LAUNCH",
     "add_category": "+ CATEGORY",
+    "size_small": "Small",
+    "size_medium": "Standard",
     "add_app": "+ APP",
     "delete": "DELETE",
     "theme_label": "THEME:",

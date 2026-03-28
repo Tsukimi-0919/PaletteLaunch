@@ -17,6 +17,10 @@ async function renderApp() {
     // テーマ切り替えで使用
     const appConfig = fullData.config;
 
+    const currentSize = appConfig.card_size || 'medium';
+    container.classList.remove('size-small', 'size-medium', 'size-large');
+    container.classList.add(`size-${currentSize}`);
+
     // 言語をロード（設定されている言語、なければ 'ja'）
     await loadLanguage(appConfig.language || 'ja');
 
@@ -81,7 +85,7 @@ async function renderApp() {
                     <span class="edit-btn" onclick="renameShortcut(event, '${item.id}', '${item.name}')" title="${i18n.prompt_new_name}">✎</span>
                     <span class="delete-btn" onclick="removeShortcut(event, '${item.id}')" title="${i18n.delete}">✕</span>
                 </div>
-                <div class="icon-container">${iconHtml}</div>
+                <div class="icon-container" title="${item.name}">${iconHtml}</div>
                 <span>${item.name}</span>
             `;
 
@@ -260,11 +264,21 @@ async function loadLanguage(langCode) {
 }
 
 function applyLabels() {
-    // HTML要素のテキストを翻訳データに書き換える
+    // 既存の翻訳適用
     document.title = i18n.app_title;
-    document.querySelector('h1').textContent = i18n.app_title;
-    document.querySelector('.add-cat-btn').textContent = i18n.add_category;
-    // 他の固定ラベルがあればここに追加
+    const h1 = document.querySelector('h1');
+    if (h1) h1.textContent = i18n.app_title;
+
+    const addCatBtn = document.querySelector('.add-cat-btn');
+    if (addCatBtn) addCatBtn.textContent = i18n.add_category;
+
+    // --- 追加：カードサイズの選択肢を翻訳 ---
+    const sizeSelect = document.getElementById('card-size-select');
+    if (sizeSelect) {
+        // 各オプションのテキストを i18n データから取得
+        sizeSelect.options[0].textContent = i18n.size_small || "Small";
+        sizeSelect.options[1].textContent = i18n.size_medium || "Medium";
+    }
 }
 
 
@@ -282,3 +296,56 @@ async function changeLanguage(langCode) {
     renderApp();
 }
 
+// 設定を反映する関数
+async function applySettings() {
+    const settings = await pywebview.api.get_settings();
+
+    // 1. テーマの反映（既存）
+    document.body.className = settings.theme;
+
+    // 2. カードサイズの反映
+    // コンテナ要素に size-small, size-medium, size-large のいずれかを付与
+    const container = document.getElementById('shortcut-list');
+    container.classList.remove('size-small', 'size-medium', 'size-large');
+    container.classList.add(`size-${settings.card_size || 'medium'}`);
+}
+
+
+// 設定を反映するメイン関数
+async function loadAndApplySettings() {
+    // get_settings ではなく get_config を使用（既存のAPIに合わせる）
+    const fullData = await pywebview.api.get_config();
+    const settings = fullData.config; // Python側の戻り値に合わせて config を参照
+
+    // 1. テーマの反映
+    document.body.className = settings.theme;
+
+    // 2. カードサイズの反映（ターゲットを app-container に変更）
+    const container = document.getElementById('app-container');
+    const currentSize = settings.card_size || 'medium';
+    // 「大」が設定に残っていたら「標準」に変換
+    if (currentSize === 'large') currentSize = 'medium';
+
+    if (container) {
+        container.classList.remove('size-small', 'size-medium', 'size-large');
+        container.classList.add(`size-${currentSize}`);
+    }
+
+    // 3. ドロップダウンの選択状態を合わせる
+    const sizeSelect = document.getElementById('card-size-select');
+    if (sizeSelect) {
+        sizeSelect.value = currentSize;
+    }
+}
+
+// ドロップダウンのイベントリスナーも上記関数を呼ぶように修正
+document.getElementById('card-size-select').addEventListener('change', async (event) => {
+    const newSize = event.target.value;
+    await pywebview.api.update_setting('card_size', newSize);
+    await loadAndApplySettings(); // 修正後の関数を呼ぶ
+});
+
+// 初期化時に実行
+window.addEventListener('pywebviewready', () => {
+    loadAndApplySettings();
+});

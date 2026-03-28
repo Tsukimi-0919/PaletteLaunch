@@ -1,6 +1,7 @@
 {
     "config": {
         "theme": "valorant",
+        "card_size": "medium",
         "language": "ja"
     },
     "categories": [

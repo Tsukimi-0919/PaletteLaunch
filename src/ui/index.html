@@ -4,36 +4,52 @@
 <head>
     <meta charset="UTF-8">
     <link rel="stylesheet" href="style.css">
-
     <link id="theme-link" rel="stylesheet" href="themes/valorant.css">
 
     <title>PALETTE LAUNCH</title>
+
+    <!-- ライブラリ -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&family=Silkscreen:wght@400;700&family=Cinzel:wght@400;900&family=Noto+Sans+JP:wght@400;700&display=swap"
-        rel="stylesheet">
+
+    <!-- フォント（1つにまとめました） -->
     <link
         href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&family=Teko:wght@400;700&family=Shippori+Mincho:wght@400;700&family=Silkscreen:wght@400;700&family=Cinzel:wght@400;900&family=Noto+Sans+JP:wght@400;700&display=swap"
         rel="stylesheet">
 </head>
-
 
 <body>
     <div class="launcher-shell">
         <header>
             <h1>PALETTE LAUNCH</h1>
             <div class="header-controls">
-                <select id="lang-select" onchange="changeLanguage(this.value)">
+                <!-- 言語切り替え -->
+                <select id="lang-select" class="theme-select" onchange="changeLanguage(this.value)">
                     <option value="ja">日本語</option>
                     <option value="en">English</option>
                 </select>
-                <select id="theme-select" onchange="changeTheme(this.value)" style="margin-right:10px;">
+
+                <!-- テーマ切り替え -->
+                <select id="theme-select" class="theme-select" onchange="changeTheme(this.value)">
+                    <!-- JSで動的に追加されます -->
                 </select>
+
+                <!-- カードサイズ切り替え -->
+                <select id="card-size-select" class="theme-select">
+                    <option value="small"></option>
+                    <option value="medium"></option>
+                </select>
+
+                <!-- カテゴリ追加ボタン -->
                 <button class="add-cat-btn" onclick="addCategory()">+ CATEGORY</button>
             </div>
         </header>
 
+        <!-- 
+            この app-container に JS で .size-small などのクラスが付与され、
+            中のカードサイズが一括制御されます。
+        -->
         <main id="app-container">
+            <!-- JSで動的に描画されます -->
         </main>
     </div>
 
