@@ -5,15 +5,12 @@
 
 body {
     background-color: var(--bg-color);
-    /* テーマから取得 */
     color: var(--text-main);
-    /* テーマから取得 */
     font-family: 'Oswald', sans-serif;
     margin: 0;
     overflow-x: hidden;
     user-select: none;
     transition: background-color 0.5s ease;
-    /* 切り替えをスムーズに */
 }
 
 .launcher-shell {
@@ -22,7 +19,6 @@ body {
     height: 100vh;
 }
 
-/* --- ヘッダー（タイトルエリア）の調整 --- */
 header {
     display: flex;
     justify-content: space-between;
@@ -30,30 +26,24 @@ header {
     padding: 10px 20px;
     height: 60px;
     box-sizing: border-box;
-    /* 背景の透過度を少し上げると、よりパネルエリアとの境界が自然になります */
     background: rgba(85, 54, 54, 0.2);
     backdrop-filter: blur(10px);
 }
 
-/* タイトルロゴのサイズも少し小さくしてバランスを取る */
 header h1 {
     font-size: 1.5rem;
-    /* 2remから少しダウン */
     margin: 0;
     line-height: 1;
 }
 
-/* --- メインコンテンツエリア --- */
 main {
-    /* ヘッダーの高さ(60px)を引いた全画面表示 */
     height: calc(100vh - 60px);
     padding: 20px;
     overflow-y: auto;
-    /* パネルが増えてもスクロール可能に */
     box-sizing: border-box;
 }
 
-/* スクロールバーのカスタマイズ（テーマの世界観を壊さない細身のデザイン） */
+/* スクロールバー */
 main::-webkit-scrollbar {
     width: 6px;
 }
@@ -65,7 +55,7 @@ main::-webkit-scrollbar-thumb {
 }
 
 /* ==========================================================================
-   カテゴリー
+   カテゴリー（基本設定）
    ========================================================================== */
 .category-section {
     margin-bottom: 40px;
@@ -85,6 +75,7 @@ main::-webkit-scrollbar-thumb {
     text-transform: uppercase;
     letter-spacing: 2px;
     margin: 0;
+    line-height: 1.2;
 }
 
 .category-title:hover {
@@ -92,7 +83,6 @@ main::-webkit-scrollbar-thumb {
     transition: 0.2s;
 }
 
-/* 編集アイコンをタイトルの横に薄く表示するのもオシャレです */
 .category-title::after {
     content: ' ✎';
     font-size: 0.8rem;
@@ -105,26 +95,9 @@ main::-webkit-scrollbar-thumb {
 }
 
 /* ==========================================================================
-   ショートカットカード
+   ショートカットカード（基本・中サイズ）
    ========================================================================== */
-/* デフォルト設定（中サイズ） */
 :root {
-    --card-width: 160px;
-    --card-height: 120px;
-    --icon-size: 48px;
-    --font-size-name: 0.9rem;
-}
-
-/* サイズ別のクラス定義 */
-.size-small {
-    --card-width: 64px;
-    --card-height: 64px;
-    --icon-size: 40px;
-    --font-size-name: 0px;
-}
-
-.size-medium {
-    /* デフォルトと同じなので空でもOKですが、明示的に書くと管理しやすいです */
     --card-width: 160px;
     --card-height: 120px;
     --icon-size: 48px;
@@ -135,57 +108,12 @@ main::-webkit-scrollbar-thumb {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(var(--card-width), 1fr));
     gap: 25px;
-    /* サイズ「小」のときは、gap（隙間）も少し詰めるとさらに多く表示できます */
     padding-bottom: 15px;
     min-height: 80px;
 }
 
-/* サイズ「小」のときは gap を少し詰める */
-#app-container.size-small .shortcut-grid {
-    gap: 10px;
-    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
-}
-
-/* カードの中の余白（padding）を消す */
-#app-container.size-small .shortcut-item {
-    padding: 0;
-    /* 余白をゼロに */
-    justify-content: center;
-    align-items: center;
-}
-
-/* 「小」の時、アイコン下のマージンをなくして中央に配置 */
-#app-container.size-small .icon-container {
-    margin-bottom: 0;
-    width: var(--icon-size);
-    height: var(--icon-size);
-}
-
-/* 操作ボタン（編集・削除）が「小」だと大きすぎる場合の調整 */
-#app-container.size-small .item-controls {
-    transform: scale(0.7);
-    /* ボタンを70%の大きさに縮小 */
-    top: -5px;
-    right: -5px;
-}
-
-/* ★ここが重要：親要素(#app-container)に .size-small クラスがあるとき、
-   その中の .shortcut-item span を非表示（透明）にする */
-#app-container.size-small .shortcut-item span {
-    opacity: 0;
-    /* 透明にする（消える） */
-    height: 0;
-    /* 高さをなくす（文字があったスペースを詰める） */
-    margin: 0;
-    /* マージンもなくす */
-    pointer-events: none;
-    /* 透明な文字をクリック不可にする */
-}
-
-/* カード全体の調整 */
 .shortcut-item {
     background: var(--card-bg);
-    /* paddingを固定値から少し柔軟に（サイズが小さい時に文字がはみ出ないよう調整） */
     padding: 15px;
     border-radius: 8px;
     clip-path: var(--card-shape);
@@ -193,33 +121,20 @@ main::-webkit-scrollbar-thumb {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    /* 中央寄せを強化 */
     position: relative;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-
-    /* JSで付与される変数を使う */
     width: var(--card-width);
     height: var(--card-height);
-}
-
-.shortcut-item img,
-.placeholder-text {
-    width: var(--icon-size);
-    height: var(--icon-size);
-    font-size: calc(var(--icon-size) * 0.8);
-    /* アイコンサイズに比例させる */
+    box-sizing: border-box;
 }
 
 .shortcut-item:hover {
     background: var(--card-hover-bg);
     transform: translateY(-5px);
-    /* アクセントカラーで光らせる */
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
-/* アイコン：大きく、かつ綺麗に見せる */
 .icon-container {
-    /* 固定値(64px)を廃止し、変数にする */
     width: var(--icon-size);
     height: var(--icon-size);
     margin-bottom: 12px;
@@ -235,21 +150,16 @@ main::-webkit-scrollbar-thumb {
     object-fit: contain;
 }
 
-/* アプリ名のテキスト */
 .shortcut-item span {
     font-size: var(--font-size-name);
-    /* ここを変数にする */
     font-weight: 500;
     text-align: center;
     word-break: break-all;
     max-width: 100%;
     margin-top: 5px;
-    /* サイズ変更を滑らかにする transition があると、
-       文字がスーッと消えるような効果になります */
     transition: opacity 0.2s ease-in-out;
 }
 
-/* アイコンの代わりになる枠の設定 */
 .icon-placeholder {
     width: var(--icon-size);
     height: var(--icon-size);
@@ -258,20 +168,86 @@ main::-webkit-scrollbar-thumb {
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
 }
 
-/* 文字を大きくする設定 */
 .placeholder-text {
     font-size: calc(var(--icon-size) * 0.5);
-    /* アイコンの半分くらいのサイズに */
     font-weight: bold;
     color: #ffffff;
     text-transform: uppercase;
-    user-select: none;
 }
 
-/* 設定項目のラベルとセレクトボックスの基本スタイル */
+/* ==========================================================================
+   ★ 小サイズ（size-small）時の完全最適化
+   ========================================================================== */
+.size-small {
+    --card-width: 64px;
+    --card-height: 64px;
+    --icon-size: 40px;
+    --font-size-name: 0px;
+}
+
+/* カテゴリ全体の隙間を圧縮 */
+#app-container.size-small .category-section {
+    margin-bottom: 20px;
+}
+
+/* カテゴリヘッダー：高さを絞り、垂直中央に固定 */
+#app-container.size-small .category-header {
+    height: 28px;
+    /* 垂直中央を出しやすい高さ */
+    margin-bottom: 12px;
+    padding: 0;
+    /* paddingを消してheightとline-heightで制御 */
+    display: flex;
+    align-items: center;
+    /* 垂直中央寄せ */
+    border-bottom: 1px solid var(--accent-color);
+}
+
+/* カテゴリタイトル：line-heightを1にしてベースラインのズレを解消 */
+#app-container.size-small .category-title {
+    font-size: 0.9rem;
+    line-height: 1;
+    /* 余白を消す */
+    display: flex;
+    align-items: center;
+    /* 文字そのものを中央に */
+    transform: translateY(-2px);
+    /* 視覚的に下に寄るのを強制補正 */
+}
+
+/* 小サイズ時のグリッド間隔 */
+#app-container.size-small .shortcut-grid {
+    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+}
+
+/* カード自体の余白を排除 */
+#app-container.size-small .shortcut-item {
+    padding: 0;
+}
+
+/* 小サイズ時はテキストを非表示 */
+#app-container.size-small .shortcut-item span {
+    display: none;
+}
+
+/* アイコンを中央に */
+#app-container.size-small .icon-container {
+    margin-bottom: 0;
+}
+
+/* 操作ボタンのスケールダウン */
+#app-container.size-small .item-controls {
+    transform: scale(0.7);
+    top: -2px;
+    right: -2px;
+}
+
+/* ==========================================================================
+   設定・ボタン・その他
+   ========================================================================== */
 .setting-item {
     margin-bottom: 20px;
     display: flex;
@@ -290,14 +266,13 @@ main::-webkit-scrollbar-thumb {
     backdrop-filter: blur(5px);
 }
 
-/* Valorantテーマの時は角を鋭く */
+/* テーマ別スタイル */
 .valorant .theme-select {
     border-radius: 0;
     border-left: 4px solid var(--accent-color);
     text-transform: uppercase;
 }
 
-/* Hydrangeaテーマの時はより透明感と丸みを */
 .hydrangea .theme-select,
 .hydrangea_pink .theme-select {
     background: rgba(255, 255, 255, 0.4);
@@ -305,9 +280,6 @@ main::-webkit-scrollbar-thumb {
     border-color: var(--accent-color);
 }
 
-/* ==========================================================================
-   ボタン・操作系
-   ========================================================================== */
 .action-btn {
     background: transparent;
     border: 1px solid var(--text-sub);
@@ -326,7 +298,6 @@ main::-webkit-scrollbar-thumb {
     font-weight: bold;
 }
 
-/* 削除・編集ボタン：サイズを固定して押しやすく */
 .item-controls {
     position: absolute;
     top: 5px;
@@ -336,41 +307,23 @@ main::-webkit-scrollbar-thumb {
     opacity: 0;
     transition: opacity 0.2s;
     z-index: 10;
-    /* 最前面に持ってくる */
 }
 
 .shortcut-item:hover .item-controls {
     opacity: 1;
 }
 
-/* ドラッグオーバー時の表示 */
 .shortcut-grid.drag-over {
     background: rgba(128, 128, 128, 0.1);
     border: 2px dashed var(--accent-color);
 }
 
-.header-controls select {
-    background: var(--card-bg);
-    color: var(--text-main);
-    border: 1px solid var(--accent-color);
-    padding: 5px 10px;
-    font-family: 'Oswald', sans-serif;
-    outline: none;
-    cursor: pointer;
-}
-
-.header-controls select option {
-    background: var(--bg-color);
-    color: var(--text-main);
-}
-
-/* ボタン自体を大きく、押しやすく */
+/* 編集・削除ボタン */
 .edit-btn,
 .delete-btn {
     background: rgba(0, 0, 0, 0.7);
     color: #fff;
     width: 30px;
-    /* 押しやすいサイズ */
     height: 30px;
     border-radius: 6px;
     display: flex;
@@ -388,4 +341,51 @@ main::-webkit-scrollbar-thumb {
     background: var(--accent-color) !important;
 }
 
-/* 削除は常に赤系が直感的 */
+/* --- セレクトボックスの共通設定（視認性向上版） --- */
+
+.theme-select,
+.header-controls select {
+    padding: 8px 12px;
+    border-radius: 8px;
+    /* 背景を透過させすぎず、しっかり色を乗せる */
+    background-color: var(--card-bg) !important;
+    color: var(--text-main) !important;
+    border: 1px solid var(--accent-color);
+    font-family: inherit;
+    cursor: pointer;
+    outline: none;
+    /* OS標準のスタイルをリセット（環境によるズレを防止） */
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+/* ドロップダウンを展開した時の「選択肢」を強制的にテーマ色にする */
+.theme-select option,
+.header-controls select option {
+    /* ここで背景色を「テーマの背景色」に固定します */
+    background-color: var(--bg-color) !important;
+    color: var(--text-main) !important;
+    padding: 10px;
+}
+
+/* Valorantテーマなどの調整 */
+.valorant .theme-select {
+    border-radius: 0;
+    border-left: 4px solid var(--accent-color);
+    text-transform: uppercase;
+}
+
+/* Hydrangeaテーマ（丸みのあるデザイン） */
+.hydrangea .theme-select,
+.hydrangea_pink .theme-select {
+    border-radius: 20px;
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    /* ほんのり透かす */
+}
+
+/* セレクトボックスのホバー時 */
+.theme-select:hover,
+.header-controls select:hover {
+    border-color: var(--text-main);
+    box-shadow: 0 0 5px var(--accent-color);
+}
