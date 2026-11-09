@@ -91,3 +91,80 @@ def test_every_save_checks_the_result(script_code):
         assert calls, method
         for line in calls:
             assert "if (!(await" in line, line
+
+
+# --- Phase 8: 操作部品の大きさは style.css の変数だけで決める ----------------------
+
+STYLE_CSS = UI_DIR / "style.css"
+THEMES_DIR = UI_DIR / "themes"
+THEME_FILES = sorted(THEMES_DIR.glob("*.css"))
+
+# ヘッダーの操作部品（選択欄・＋カテゴリー）とカテゴリーの操作ボタン
+CONTROL_SELECTOR = re.compile(
+    r"\.add-cat-btn|\.action-btn|\.theme-select|#lang-select|#theme-select"
+    r"|#card-size-select|\.header-controls|(?<![\w-])select(?![\w-])")
+# 大きさを決めるプロパティ（テーマ側に書くと部品の高さ・幅がテーマごとにずれる）
+SIZE_PROPERTY = re.compile(
+    r"^(?:(?:min-|max-)?(?:height|width)|padding(?:-\w+)*|font-size|font|line-height"
+    r"|margin(?:-\w+)*|box-sizing|flex(?:-\w+)*)$")
+
+
+def css_rules(path):
+    """(セレクター, [(プロパティ, 値)]) の一覧。入れ子の @ ルールは中身だけを拾う簡易版"""
+    text = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
+    rules = []
+    for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", text):
+        decls = []
+        for decl in body.split(";"):
+            if ":" in decl:
+                prop, value = decl.split(":", 1)
+                decls.append((prop.strip().lower(), value.strip()))
+        rules.append((selector.strip(), decls))
+    return rules
+
+
+def test_theme_files_exist():
+    assert len(THEME_FILES) >= 10
+
+
+@pytest.mark.parametrize("theme", THEME_FILES, ids=lambda p: p.stem)
+def test_theme_does_not_size_controls(theme):
+    """テーマ CSS は操作部品に大きさ（高さ・幅・余白・文字サイズ）を書かない"""
+    bad = [(sel, prop) for sel, decls in css_rules(theme) if CONTROL_SELECTOR.search(sel)
+           for prop, _ in decls if SIZE_PROPERTY.match(prop)]
+    assert bad == []
+
+
+@pytest.mark.parametrize("theme", THEME_FILES, ids=lambda p: p.stem)
+def test_theme_overrides_size_variables_only_in_root(theme):
+    """大きさの変数（--control-* / --action-*）の上書きはテーマの :root だけで行う"""
+    for sel, decls in css_rules(theme):
+        for prop, _ in decls:
+            if re.match(r"--(control|action)-", prop):
+                assert sel == ":root", (sel, prop)
+
+
+def test_style_defines_control_size_variables():
+    root = {}
+    for sel, decls in css_rules(STYLE_CSS):
+        if sel == ":root":
+            root.update(decls)
+    for name in ("--control-height", "--control-radius", "--control-font-size", "--control-pad-x",
+                 "--lang-select-width", "--theme-select-width", "--size-select-width",
+                 "--add-cat-width", "--action-height", "--action-font-size",
+                 "--action-height-small", "--action-font-size-small"):
+        assert name in root, name
+
+
+def test_header_controls_and_action_buttons_use_variables():
+    rules = dict(css_rules(STYLE_CSS))
+    header = dict(rules[".header-controls select,\n.header-controls .add-cat-btn"])
+    assert header["height"] == "var(--control-height)"
+    assert header["font-size"] == "var(--control-font-size)"
+    assert header["border-radius"] == "var(--control-radius)"
+    action = dict(rules["#app-container .category-actions .action-btn"])
+    assert action["height"] == "var(--action-height)"
+    assert action["font-size"] == "var(--action-font-size)"
+    # 小サイズでは、カテゴリーの帯（28px）に収まる値に切り替わる
+    small = dict(rules[".size-small"])
+    assert small["--action-height"] == "var(--action-height-small)"

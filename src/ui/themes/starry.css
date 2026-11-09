@@ -1,4 +1,7 @@
 :root {
+    /* 操作部品の大きさ（style.css の変数を上書き） */
+    --control-radius: 20px;
+
     /* 深い夜空と輝きのパレット */
     --bg-color: #050b18;
     /* 深紺色（宇宙の底） */
@@ -72,7 +75,6 @@ body {
     color: var(--text-color) !important;
     border: 1px solid var(--text-color) !important;
     border-radius: 20px;
-    padding: 5px 20px;
     transition: 0.3s;
 }
 

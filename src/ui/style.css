@@ -255,45 +255,133 @@ main::-webkit-scrollbar-thumb {
     gap: 8px;
 }
 
-.theme-select {
-    padding: 8px 12px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    color: inherit;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    font-family: inherit;
-    cursor: pointer;
-    backdrop-filter: blur(5px);
+/* ==========================================================================
+   操作部品の大きさ（Phase 8）
+   大きさ（高さ・幅・余白・文字サイズ・角丸）はここの変数だけで決める。
+   テーマ CSS には色・枠・フォントの種類・装飾だけを書き、大きさを変えたい
+   ときはテーマの :root で変数を上書きする（tests/test_ui_static.py で検査）。
+   ========================================================================== */
+:root {
+    /* ヘッダーの操作部品（言語・テーマ・サイズの選択欄と「＋カテゴリー」） */
+    --control-height: 34px;
+    --control-radius: 8px;
+    --control-font-size: 13px;
+    --control-pad-x: 12px;
+    --control-gap: 8px;
+    /* 幅は固定。テーマや言語を切り替えても部品の位置がずれないように、
+       いちばん長い表示（全テーマのフォント・両言語）が収まる幅にしてある。
+       いま最も広いのは Valorant（Orbitron・大文字表記）。テーマやフォントを足したら測り直すこと */
+    --lang-select-width: 100px;
+    --theme-select-width: 204px;
+    --size-select-width: 120px;
+    --add-cat-width: 128px;
+
+    /* カテゴリー見出しの操作ボタン（＋アプリ・削除） */
+    --action-height: 26px;
+    --action-font-size: 12px;
+    --action-pad-x: 12px;
+    --action-height-small: 20px;
+    --action-font-size-small: 11px;
+    --action-pad-x-small: 8px;
+    --action-gap: 6px;
 }
 
-/* テーマ別スタイル */
-.valorant .theme-select {
-    border-radius: 0;
-    border-left: 4px solid var(--accent-color);
-    text-transform: uppercase;
+.size-small {
+    --action-height: var(--action-height-small);
+    --action-font-size: var(--action-font-size-small);
+    --action-pad-x: var(--action-pad-x-small);
 }
 
-.hydrangea .theme-select,
-.hydrangea_pink .theme-select {
-    background: rgba(255, 255, 255, 0.4);
-    border-radius: 20px;
-    border-color: var(--accent-color);
+/* ヘッダー：折り返さない。幅が足りないときはまずタイトルを省略し、
+   それでも足りないときだけテーマの選択欄を縮める */
+header {
+    gap: 16px;
+}
+
+header h1 {
+    flex: 0 1000 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--control-gap);
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.header-controls select,
+.header-controls .add-cat-btn {
+    box-sizing: border-box;
+    flex: none;
+    height: var(--control-height);
+    margin: 0;
+    padding: 0 var(--control-pad-x);
+    border-radius: var(--control-radius);
+    font-size: var(--control-font-size);
+    line-height: 1;
+}
+
+.header-controls #lang-select {
+    width: var(--lang-select-width);
+}
+
+/* ウィンドウが狭く、タイトルを省略しても入りきらないときだけ縮む（全テーマ共通） */
+.header-controls #theme-select {
+    flex: 0 1 var(--theme-select-width);
+    width: var(--theme-select-width);
+    min-width: 96px;
+}
+
+.header-controls #card-size-select {
+    width: var(--size-select-width);
+}
+
+.header-controls .add-cat-btn {
+    width: var(--add-cat-width);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* カテゴリー見出しの操作ボタン：見出しの帯の高さに収める */
+.category-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--action-gap);
+    flex-shrink: 0;
+}
+
+#app-container .category-actions .action-btn {
+    box-sizing: border-box;
+    height: var(--action-height);
+    margin: 0;
+    padding: 0 var(--action-pad-x);
+    font-size: var(--action-font-size);
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
 }
 
 .action-btn {
     background: transparent;
     border: 1px solid var(--text-sub);
     color: var(--text-sub);
-    padding: 2px 10px;
     cursor: pointer;
-    margin-left: 5px;
 }
 
 .add-cat-btn {
     background: var(--accent-color);
     color: white;
     border: none;
-    padding: 10px 20px;
     cursor: pointer;
     font-weight: bold;
 }
@@ -343,10 +431,10 @@ main::-webkit-scrollbar-thumb {
 
 /* --- セレクトボックスの共通設定（視認性向上版） --- */
 
+/* 大きさ・角丸は「操作部品の大きさ（Phase 8）」の変数で決める */
 .theme-select,
 .header-controls select {
-    padding: 8px 12px;
-    border-radius: 8px;
+    backdrop-filter: blur(5px);
     /* 背景を透過させすぎず、しっかり色を乗せる */
     background-color: var(--card-bg) !important;
     color: var(--text-main) !important;
@@ -368,17 +456,15 @@ main::-webkit-scrollbar-thumb {
     padding: 10px;
 }
 
-/* Valorantテーマなどの調整 */
+/* Valorantテーマなどの調整（角丸は valorant.css の --control-radius） */
 .valorant .theme-select {
-    border-radius: 0;
     border-left: 4px solid var(--accent-color);
     text-transform: uppercase;
 }
 
-/* Hydrangeaテーマ（丸みのあるデザイン） */
+/* Hydrangeaテーマ（丸みは各テーマの --control-radius） */
 .hydrangea .theme-select,
 .hydrangea_pink .theme-select {
-    border-radius: 20px;
     background-color: rgba(255, 255, 255, 0.2) !important;
     /* ほんのり透かす */
 }

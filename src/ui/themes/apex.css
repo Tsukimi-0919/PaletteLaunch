@@ -1,4 +1,7 @@
 :root {
+    /* 操作部品の大きさ（style.css の変数を上書き） */
+    --control-radius: 0;
+
     --bg-color: #1e1e1e;
     --accent-color: #cc3333;
     /* 朱色 */
@@ -90,8 +93,6 @@ body {
     border: 2px solid var(--text-main) !important;
     font-family: 'Teko', sans-serif;
     text-transform: uppercase;
-    font-size: 1.2rem;
-    padding: 5px 15px;
 }
 
 .add-cat-btn:hover {

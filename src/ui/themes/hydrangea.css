@@ -1,4 +1,7 @@
 :root {
+    /* 操作部品の大きさ（style.css の変数を上書き） */
+    --control-radius: 20px;
+
     --bg-color: #f0f7ff;
     --accent-color: #4a90e2;
     /* より澄んだ水色 */
@@ -116,9 +119,14 @@ body {
     color: var(--accent-color) !important;
     /* 文字をテーマカラーに */
     border-radius: 12px;
-    padding: 4px 8px;
     font-family: 'Shippori Mincho', serif;
     transition: all 0.3s ease;
+}
+
+/* カード上の編集・削除ボタンの余白（.action-btn の大きさは style.css の変数で決める） */
+.edit-btn,
+.delete-btn {
+    padding: 4px 8px;
 }
 
 /* ホバー時の挙動 */
@@ -148,5 +156,4 @@ select {
     border: 1px solid var(--accent-color) !important;
     color: var(--text-main) !important;
     border-radius: 8px;
-    padding: 5px;
 }
