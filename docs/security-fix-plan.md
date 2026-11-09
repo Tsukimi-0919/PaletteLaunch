@@ -130,3 +130,5 @@ Claude Code は **1セッション＝1フェーズ** で進めること。
 - `docs/architecture.md` を現状のコードに合わせて更新する（フォント、main.py の役割、ConfigManager の位置づけ）。
 - README の「名前をクリックすると編集」を、実際の操作（✎ボタン）に合わせて直す。
 - `pip-audit -r requirements.txt` を実行し、結果に応じて依存を更新する。
+- README に開発環境の手順を追記する（Python 3.12 / `py -3.12 -m venv .venv` / `pip install -r requirements-dev.txt` / `pytest`）。Phase 0 で `.python-version` を削除したため。
+- `.gitattributes` を追加して改行コードを統一する（Phase 0 のコミット時に LF/CRLF の警告が出たため）。

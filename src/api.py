@@ -11,7 +11,7 @@ import sys
 from src.core.config import ConfigManager
 from src.core.launcher import launch_app
 from src.core.icons import get_icon_base64
-from src.core.launcher import launch_app, resolve_shortcut
+from src.core.launcher import launch_app, read_url_file, resolve_shortcut
 
 
 class API:
@@ -80,9 +80,8 @@ class API:
         # --- Steam (.url) の場合のアイコン取得強化 ---
         if path.lower().endswith('.url'):
             try:
-                config = configparser.ConfigParser()
-                config.read(path, encoding='utf-8')  # 念のためエンコード指定
-                if config.has_option('InternetShortcut', 'IconFile'):
+                config = read_url_file(path)
+                if config is not None and config.has_option('InternetShortcut', 'IconFile'):
                     icon_path = config.get('InternetShortcut', 'IconFile')
                     # 「,0」などのインデックス指定を削除して純粋なパスにする
                     icon_path = icon_path.split(',')[0].strip()
@@ -99,7 +98,9 @@ class API:
         if not icon_data:
             icon_data = get_icon_base64(path)
 
-        self.config.add_shortcut(category_id, name, real_path, icon=icon_data)
+        # 起動用には登録したファイルのパスをそのまま、解決先は表示用に target へ保存する
+        self.config.add_shortcut(category_id, name, path, icon=icon_data,
+                                 target=real_path if real_path != path else None)
         return True
 
     def delete_shortcut(self, shortcut_id):

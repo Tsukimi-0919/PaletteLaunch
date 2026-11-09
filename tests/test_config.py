@@ -54,7 +54,19 @@ def test_add_and_delete_shortcut(manager):
     assert shortcuts[0]["name"] == "Note"
     assert shortcuts[0]["icon"] == "base64_data"
 
+    assert "target" not in shortcuts[0]
+
     # 削除
     short_id = shortcuts[0]["id"]
     manager.delete_shortcut(short_id)
     assert len(manager.get_all()["categories"][0]["shortcuts"]) == 0
+
+
+def test_add_shortcut_keeps_original_path_and_target(manager):
+    """path には登録したファイルをそのまま、解決先は target に保存する"""
+    cat_id = manager.get_all()["categories"][0]["id"]
+    manager.add_shortcut(cat_id, "Valorant", r"C:\Games\VALORANT.lnk",
+                         icon="", target=r"C:\Riot Games\Riot Client\RiotClientServices.exe")
+    s = manager.get_all()["categories"][0]["shortcuts"][0]
+    assert s["path"] == r"C:\Games\VALORANT.lnk"
+    assert s["target"] == r"C:\Riot Games\Riot Client\RiotClientServices.exe"

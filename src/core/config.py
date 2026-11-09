@@ -73,7 +73,8 @@ class ConfigManager:
         self.save(data)
 
     # --- ショートカット操作 ---
-    def add_shortcut(self, category_id, name, path, icon=""):
+    def add_shortcut(self, category_id, name, path, icon="", target=None):
+        """path には登録したファイルのパスをそのまま、target には表示用の解決先を保存する"""
         data = self._get_raw_data()
         for cat in data["categories"]:
             if cat["id"] == category_id:
@@ -83,6 +84,8 @@ class ConfigManager:
                     "path": path,
                     "icon": icon
                 }
+                if target:
+                    new_item["target"] = target
                 cat["shortcuts"].append(new_item)
                 break
         self.save(data)
