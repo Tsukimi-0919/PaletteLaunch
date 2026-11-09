@@ -20,7 +20,7 @@ UNC_EXE = "\\\\server\\share\\game.exe"
 
 # JS から呼べてよい名前（script.js が使っているメソッドのみ）
 EXPECTED_PUBLIC = {
-    "add_category", "add_shortcut", "delete_category", "delete_shortcut",
+    "add_category", "add_dropped_shortcuts", "add_shortcut", "delete_category", "delete_shortcut",
     "edit_category", "edit_shortcut", "get_config", "get_load_status", "get_themes",
     "launch_executable", "save_order", "select_file", "update_setting",
 }
@@ -616,13 +616,34 @@ class FakeClock:
         return self.now
 
 
+def _fake_consume(trusted):
+    """DropGuard.consume の代わり: pywebviewFullPath が trusted にあるものだけ受け付ける"""
+    from src.core.drop_guard import DropCheck, REASON_NO_FILES, REASON_NOT_RECORDED
+
+    def consume(files):
+        check = DropCheck()
+        if not files:
+            check.reason = REASON_NO_FILES
+            return check
+        for f in files:
+            path = f.get("pywebviewFullPath")
+            if path in trusted:
+                check.accepted.append(path)
+            else:
+                check.rejected.append((f.get("name"), REASON_NOT_RECORDED))
+        if not check.accepted:
+            check.reason = REASON_NOT_RECORDED
+        return check
+    return consume
+
+
 @pytest.fixture
 def drop(api_module, tmp_path, icon):
-    """有効な DropGuard（consume は渡されたパスのうち trusted にあるものを返す）を持つ API"""
+    """有効な DropGuard（モック）を持つ API"""
     clock = FakeClock()
     guard = mock.MagicMock(enabled=True)
     guard.trusted = set()
-    guard.consume.side_effect = lambda claimed: [p for p in claimed if p in guard.trusted]
+    guard.consume.side_effect = _fake_consume(guard.trusted)
     api = api_module.API(str(tmp_path / "settings.json"), drop_guard=guard, clock=clock)
     window = mock.MagicMock()
     api._attach_window(window)
@@ -647,8 +668,11 @@ def test_dropped_path_can_be_added(drop, tmp_path):
     drop.guard.trusted.add(path)
     drop.api._handle_drop(drop_event(path))
 
-    assert drop_payload(drop.window) == [{"name": "My Game", "path": path}]
-    assert drop.api.add_shortcut(drop.cat_id, "My Game", path) == {"ok": True}
+    assert drop_payload(drop.window) == {"files": [{"name": "My Game", "path": path}],
+                                         "error": None}
+    assert drop.api.add_dropped_shortcuts(drop.cat_id, [path]) == \
+        {"results": [{"path": path, "ok": True}], "error": None}
+    assert shortcuts(drop.api)[0]["name"] == "My Game"
     # 使ったら消える
     assert drop.api.add_shortcut(drop.cat_id, "My Game", path) == \
         {"ok": False, "error": "path_not_selected"}
@@ -659,9 +683,8 @@ def test_drop_payload_is_json_escaped(drop, tmp_path):
     drop.guard.trusted.add(path)
     drop.api._handle_drop(drop_event(path))
     js = drop.window.run_js.call_args.args[0]
-    assert "'" not in js.split("(", 1)[1] or "\\u" in js
-    assert "\u2028" not in js
-    assert drop_payload(drop.window) == [{"name": "x'y\u2028z", "path": path}]
+    assert "\u2028" not in js  # ensure_ascii \u3067 \u2028 \u306b\u30a8\u30b9\u30b1\u30fc\u30d7\u3055\u308c\u308b
+    assert drop_payload(drop.window)["files"] == [{"name": "x'y\u2028z", "path": path}]
 
 
 def test_dropped_path_still_validated(drop, tmp_path):
@@ -669,14 +692,15 @@ def test_dropped_path_still_validated(drop, tmp_path):
     path = make_file(tmp_path, "notes.txt")
     drop.guard.trusted.add(path)
     drop.api._handle_drop(drop_event(path))
-    assert drop.api.add_shortcut(drop.cat_id, "notes", path) == \
-        {"ok": False, "error": "extension_not_allowed"}
+    assert drop.api.add_dropped_shortcuts(drop.cat_id, [path])["results"] == \
+        [{"path": path, "ok": False, "error": "extension_not_allowed"}]
 
 
-def test_untrusted_drop_is_not_recorded(drop, tmp_path):
+def test_untrusted_drop_reports_reason(drop, tmp_path):
+    """拒否したときも、理由を UI に知らせる（パスは知らせない）"""
     path = make_file(tmp_path, "evil.exe")
     drop.api._handle_drop(drop_event(path))
-    drop.window.run_js.assert_not_called()
+    assert drop_payload(drop.window) == {"files": [], "error": "drop_not_recorded"}
     assert drop.api.add_shortcut(drop.cat_id, "evil", path) == \
         {"ok": False, "error": "path_not_selected"}
 
@@ -714,8 +738,26 @@ def test_multiple_dropped_files(drop, tmp_path):
     a, b = make_file(tmp_path, "a.exe"), make_file(tmp_path, "b.bat")
     drop.guard.trusted.update({a, b})
     drop.api._handle_drop(drop_event(a, b))
-    assert drop.api.add_shortcut(drop.cat_id, "a", a) == {"ok": True}
-    assert drop.api.add_shortcut(drop.cat_id, "b", b) == {"ok": True}
+    result = drop.api.add_dropped_shortcuts(drop.cat_id, [a, b])
+    assert [r["ok"] for r in result["results"]] == [True, True]
+
+
+def test_drop_without_target_category(drop, tmp_path):
+    """カテゴリーの外にドロップしたら追加せず、理由を返し、ドロップの記録も消す"""
+    path = make_file(tmp_path, "a.exe")
+    drop.guard.trusted.add(path)
+    drop.api._handle_drop(drop_event(path))
+    assert drop.api.add_dropped_shortcuts(None, [path]) == \
+        {"results": [], "error": "drop_target_missing"}
+    assert shortcuts(drop.api) == []
+    assert drop.api.add_shortcut(drop.cat_id, "a", path) == \
+        {"ok": False, "error": "path_not_selected"}
+
+
+@pytest.mark.parametrize("paths", [None, "C:\\a.exe", [1], [None]])
+def test_add_dropped_rejects_bad_paths(drop, paths):
+    assert drop.api.add_dropped_shortcuts(drop.cat_id, paths) == \
+        {"results": [], "error": "invalid_path"}
 
 
 @pytest.mark.parametrize("enabled_guard", [None, False])
@@ -727,7 +769,7 @@ def test_drop_ignored_without_enabled_guard(api_module, tmp_path, icon, enabled_
     api._attach_window(window)
     path = make_file(tmp_path, "a.exe")
     api._handle_drop(drop_event(path))
-    window.run_js.assert_not_called()
+    assert drop_payload(window) == {"files": [], "error": "drop_disabled"}
     if guard is not None:
         guard.consume.assert_not_called()
     cat_id = api.get_config()["categories"][0]["id"]
@@ -735,10 +777,34 @@ def test_drop_ignored_without_enabled_guard(api_module, tmp_path, icon, enabled_
 
 
 @pytest.mark.parametrize("event", [None, {}, {"dataTransfer": None},
-                                   {"dataTransfer": {"files": "x"}}, {"dataTransfer": {}}])
-def test_malformed_drop_event(drop, event):
+                                   {"dataTransfer": {"files": "x"}}, {"dataTransfer": {}},
+                                   {"dataTransfer": {"files": []}}])
+def test_non_file_drop_is_ignored(drop, event):
+    """ファイルを含まない drop（カードの並べ替えなど）は UI に何も知らせない"""
     drop.api._handle_drop(event)
     drop.window.run_js.assert_not_called()
+    drop.guard.consume.assert_not_called()
+
+
+def test_drop_flow_is_logged(drop, tmp_path, caplog):
+    path = make_file(tmp_path, "a.exe")
+    drop.guard.trusted.add(path)
+    with caplog.at_level(logging.INFO, logger="src.api"):
+        drop.api._handle_drop(drop_event(path))
+        drop.api.add_dropped_shortcuts(drop.cat_id, [path])
+    text = caplog.text
+    for stage in ("[drop 2/5]", "[drop 4/5]", "[drop 5/5]"):
+        assert stage in text, stage
+    assert "OK" in text
+
+
+def test_rejected_drop_logs_reason(drop, tmp_path, caplog):
+    path = make_file(tmp_path, "a.exe")
+    drop.guard.trusted.add(path)
+    drop.api._handle_drop(drop_event(path))
+    with caplog.at_level(logging.INFO, logger="src.api"):
+        drop.api.add_dropped_shortcuts(None, [path])
+    assert "drop 5/5" in caplog.text and "カテゴリーが分からない" in caplog.text
 
 
 def test_drop_in_read_only_mode_reports_read_only(api_module, tmp_path, icon):
@@ -747,7 +813,7 @@ def test_drop_in_read_only_mode_reports_read_only(api_module, tmp_path, icon):
     settings.write_bytes(b'{"config": {}, "categories": [')
     guard = mock.MagicMock(enabled=True)
     path = make_file(tmp_path, "game.exe")
-    guard.consume.side_effect = lambda claimed: [p for p in claimed if p == path]
+    guard.consume.side_effect = _fake_consume({path})
     api = api_module.API(str(settings), drop_guard=guard)
     window = mock.MagicMock()
     api._attach_window(window)
@@ -755,7 +821,14 @@ def test_drop_in_read_only_mode_reports_read_only(api_module, tmp_path, icon):
     before = settings.read_bytes()
 
     api._handle_drop(drop_event(path))
-    window.run_js.assert_called_once()
+    assert drop_payload(window)["files"] == [{"name": "game", "path": path}]
     cat_id = api.get_config()["categories"][0]["id"]
-    assert api.add_shortcut(cat_id, "game", path) == {"ok": False, "error": "read_only"}
+    assert api.add_dropped_shortcuts(cat_id, [path])["results"] == \
+        [{"path": path, "ok": False, "error": "read_only"}]
     assert settings.read_bytes() == before
+
+
+def test_select_file_uses_file_dialog_open(api, dialog, api_module):
+    dialog.return_value = None
+    api.select_file()
+    assert dialog.call_args.args[0] == api_module.webview.FileDialog.OPEN

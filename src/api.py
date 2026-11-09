@@ -39,6 +39,9 @@ ALLOWED_CARD_SIZES = ("small", "medium")
 DROPPED_PATH_TTL_SECONDS = 30.0
 # ドロップを JS に知らせる関数（script.js で定義）
 _JS_DROP_CALLBACK = "paletteLaunchOnDrop"
+# ドロップの検証が無効なとき・ドロップ先のカテゴリーが分からないときのエラーコード
+DROP_DISABLED = "drop_disabled"
+DROP_TARGET_MISSING = "drop_target_missing"
 
 # 制御文字（C0/C1）と、文字の向きを変える制御文字
 _UNSAFE_CHARS_RE = re.compile(
@@ -118,29 +121,47 @@ class API:
         """
         document の drop イベント（Python 側の DOM ハンドラー）。
         pywebviewFullPath は JS から偽装できるため、DropGuard でネイティブ側の記録と
-        照合できたパスだけを登録可能なパスとして記録し、JS に知らせる。
+        照合できたパスだけを登録可能なパスとして記録する。
+        結果（受け付けたファイル、または拒否の理由）は必ず JS に知らせる（UI に理由を出すため）。
+        ログの [drop n/5] は、ドロップの流れのどの段階かを表す（docs/security-fix-plan.md）。
         """
-        guard = self._drop_guard
-        if guard is None or not guard.enabled:
-            logger.warning("ドロップでの追加は無効です（ドロップの検証が有効になっていません）")
-            return
-
         try:
             files = event["dataTransfer"]["files"]
-            claimed = [f.get("pywebviewFullPath") for f in files if isinstance(f, dict)]
-        except (KeyError, TypeError, AttributeError):
-            claimed = []
-        accepted = guard.consume(claimed)
+            if not isinstance(files, list):
+                files = []
+        except (KeyError, TypeError):
+            files = []
+        files = [f for f in files if isinstance(f, dict)]
+        logger.info("[drop 2/5] DOM の drop ハンドラーが呼ばれました: %d 件 %s（pywebviewFullPath あり %d 件）",
+                    len(files), [_brief(f.get("name"), 120) for f in files],
+                    sum(1 for f in files if f.get("pywebviewFullPath")))
+        if not files:
+            # ファイル以外のドロップ（カードの並べ替えなど）。UI には何も知らせない
+            logger.info("[drop 2/5] ファイルを含まない drop のため無視します")
+            return
+
+        guard = self._drop_guard
+        if guard is None or not guard.enabled:
+            logger.warning("[drop 3/5] ドロップの検証が有効になっていないため拒否しました")
+            accepted, error = [], DROP_DISABLED
+        else:
+            check = guard.consume(files)
+            accepted, error = check.accepted, (None if check.accepted else check.reason)
 
         with self._drop_lock:
             # 記録は最後の1回のドロップ分だけ
             self._dropped_paths = {_normalize_path(p) for p in accepted}
             self._dropped_at = self._clock() if accepted else None
 
-        if not accepted or self._window is None:
+        if self._window is None:
+            logger.error("[drop 4/5] ウィンドウが無いため JS に知らせられません")
             return
-        payload = [{"name": os.path.splitext(os.path.basename(p))[0], "path": p}
-                   for p in accepted]
+        payload = {
+            "files": [{"name": os.path.splitext(os.path.basename(p))[0], "path": p}
+                      for p in accepted],
+            "error": error,
+        }
+        logger.info("[drop 4/5] JS に知らせます: 受け付け %d 件、エラー %s", len(accepted), error)
         # json.dumps（ensure_ascii）の結果は、そのまま JS のリテラルとして安全に埋め込める
         self._window.run_js(
             f"window.{_JS_DROP_CALLBACK} && window.{_JS_DROP_CALLBACK}({json.dumps(payload)});")
@@ -348,6 +369,37 @@ class API:
         self._forget_used_path(_normalize_path(path))
         return {"ok": True}
 
+    def add_dropped_shortcuts(self, category_id, paths):
+        """
+        ドロップで受け取ったファイル（_handle_drop が JS に知らせたもの）を追加する。
+        category_id が None なら、ドロップ先のカテゴリーが分からないとして何も追加しない。
+        戻り値: {"results": [{"path", "ok", "error"?}], "error": None または エラーコード}
+        パスの検証は add_shortcut と同じ（ドロップで記録したパスしか通らない）。
+        """
+        count = len(paths) if isinstance(paths, list) else 0
+        logger.info("[drop 5/5] JS がドロップの結果を受け取りました: カテゴリー %s、%d 件",
+                    _brief(category_id), count)
+        if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+            logger.warning("[drop 5/5] ドロップのパスの形が不正なため拒否しました")
+            return {"results": [], "error": "invalid_path"}
+        if category_id is None:
+            logger.warning("[drop 5/5] ドロップ先のカテゴリーが分からないため追加しません")
+            with self._drop_lock:
+                self._dropped_paths, self._dropped_at = set(), None
+            return {"results": [], "error": DROP_TARGET_MISSING}
+
+        results = []
+        for path in paths:
+            name = os.path.splitext(os.path.basename(path))[0]
+            result = self.add_shortcut(category_id, name, path)
+            entry = {"path": path, "ok": bool(result.get("ok"))}
+            if not entry["ok"]:
+                entry["error"] = result.get("error")
+            logger.info("[drop 5/5] add_shortcut の結果: %s -> %s", _brief(path, 300),
+                        "OK" if entry["ok"] else entry["error"])
+            results.append(entry)
+        return {"results": results, "error": None}
+
     def delete_shortcut(self, shortcut_id):
         """ショートカットを削除する"""
         if not isinstance(shortcut_id, str):
@@ -406,7 +458,7 @@ class API:
         file_types = ('Game files (*.exe;*.lnk;*.url;*.bat)',
                       'All files (*.*)')
         result = window.create_file_dialog(
-            webview.OPEN_DIALOG, allow_multiple=False, file_types=file_types)
+            webview.FileDialog.OPEN, allow_multiple=False, file_types=file_types)
 
         if result and len(result) > 0:
             self._selected_path = _normalize_path(result[0])

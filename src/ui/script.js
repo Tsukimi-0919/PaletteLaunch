@@ -22,13 +22,19 @@ let renderRunning = null;
 let renderRequested = false;
 // Sortable のインスタンス（カテゴリー用は1つだけ、グリッド用は描き直すたびに destroy する）
 let categorySortable = null;
+// カテゴリーの要素 → カテゴリー ID（保存データを DOM の属性に入れずに持つ）
+let sectionCategoryIds = new WeakMap();
 let gridSortables = [];
 // 起動の連打防止（全カード共通）
 const LAUNCH_COOLDOWN_MS = 1000;
 let launchLockedUntil = 0;
 // ドロップ先のカテゴリー（Python 側の通知 paletteLaunchOnDrop と組み合わせる）
 const DROP_TARGET_TTL_MS = 30000;
+// ドロップ後、Python 側から結果が届かないときに理由を表示するまでの時間
+// （Python 側はネイティブの記録を最大2秒待つ: drop_guard.NATIVE_WAIT_SECONDS）
+const DROP_RESPONSE_TIMEOUT_MS = 5000;
 let pendingDrop = null;
+let dropResponseTimer = null;
 
 // --- 入力値の正規化 -----------------------------------------------------------
 
@@ -89,11 +95,14 @@ async function reportSaveFailure() {
 
 function bindStaticHandlers() {
     // ページ全体でファイルのドロップを受け付ける（drop イベントを発生させるため）。
-    // カテゴリー外にドロップしたときは pendingDrop を消して、追加しない。
+    // カテゴリーの上なら、そのカテゴリーに追加する（createCategoryElement で categoryId を入れる）。
+    // カテゴリーの外なら categoryId: null のまま、Python 側で「ドロップ先が分からない」になる。
     document.addEventListener('dragover', (e) => e.preventDefault());
     document.addEventListener('drop', (e) => {
         e.preventDefault();
-        if (!e.target.closest || !e.target.closest('.shortcut-grid')) pendingDrop = null;
+        if (!isFileDrag(e)) return;  // カードの並べ替え（Sortable）は対象外
+        const section = e.target.closest ? e.target.closest('.category-section') : null;
+        startDrop(section ? sectionCategoryIds.get(section) || null : null);
     });
     document.getElementById('lang-select')
         .addEventListener('change', (event) => changeLanguage(event.target.value));
@@ -215,16 +224,16 @@ function createCategoryElement(category) {
     catElement.append(header, gridElement);
 
     // --- ドラッグ＆ドロップイベント ---
-    gridElement.addEventListener('dragover', (e) => { e.preventDefault(); gridElement.classList.add('drag-over'); });
-    gridElement.addEventListener('dragleave', () => { gridElement.classList.remove('drag-over'); });
-    gridElement.addEventListener('drop', (e) => {
-        e.preventDefault();
-        gridElement.classList.remove('drag-over');
-        // フルパスは Python 側で受け取り、paletteLaunchOnDrop で知らされる（WebView2 には file.path が無い）
-        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            pendingDrop = { categoryId: category.id, at: Date.now() };
-        }
+    // ドロップ先はカテゴリー全体（見出しを含む）。ドロップ自体は document の drop で受け取る。
+    // フルパスは Python 側で受け取り、paletteLaunchOnDrop で知らされる（WebView2 には file.path が無い）
+    sectionCategoryIds.set(catElement, category.id);
+    catElement.addEventListener('dragover', (e) => {
+        if (isFileDrag(e)) { e.preventDefault(); gridElement.classList.add('drag-over'); }
     });
+    catElement.addEventListener('dragleave', (e) => {
+        if (!catElement.contains(e.relatedTarget)) gridElement.classList.remove('drag-over');
+    });
+    catElement.addEventListener('drop', () => { gridElement.classList.remove('drag-over'); });
 
     // --- ショートカットの表示処理 ---
     category.shortcuts.forEach(item => {
@@ -389,22 +398,63 @@ function addShortcutErrorMessage(result) {
     return i18n["error_" + code] || i18n.error_add_shortcut || code;
 }
 
-// ドロップされたファイルを追加する（Python 側の drop ハンドラーから呼ばれる）。
-// files: [{name, path}]。path は Python 側でネイティブの記録と照合済みで、
-// add_shortcut でも改めて検証される。
-async function onFilesDropped(files) {
+// --- ドラッグ＆ドロップ -------------------------------------------------------
+// 流れ: document の drop（startDrop）→ Python の drop ハンドラーがネイティブの記録と照合
+// → paletteLaunchOnDrop（onFilesDropped）→ add_dropped_shortcuts。
+// 追加されなかったときは、必ず理由を alert で表示する。
+
+function isFileDrag(e) {
+    const types = e.dataTransfer ? Array.from(e.dataTransfer.types || []) : [];
+    return types.includes('Files');
+}
+
+function startDrop(categoryId) {
+    pendingDrop = { categoryId, at: Date.now() };
+    clearTimeout(dropResponseTimer);
+    // Python 側から結果が届かない（ドロップの検証が無効、途中で止まった）ときも理由を出す
+    dropResponseTimer = setTimeout(() => {
+        dropResponseTimer = null;
+        if (pendingDrop) {
+            pendingDrop = null;
+            alert(i18n.error_drop_no_response || i18n.error_add_shortcut);
+        }
+    }, DROP_RESPONSE_TIMEOUT_MS);
+}
+
+// ドロップの結果（Python 側の drop ハンドラーから呼ばれる）。
+// payload: {files: [{name, path}], error: null | エラーコード}。
+// path は Python 側でネイティブの記録と照合済みで、add_dropped_shortcuts でも改めて検証される。
+async function onFilesDropped(payload) {
+    clearTimeout(dropResponseTimer);
+    dropResponseTimer = null;
     const target = pendingDrop;
     pendingDrop = null;
-    if (!target || Date.now() - target.at > DROP_TARGET_TTL_MS) return;
-    if (!Array.isArray(files) || files.length === 0) return;
 
+    if (!payload || typeof payload !== 'object') return;
+    if (payload.error) {
+        alert(addShortcutErrorMessage(payload));
+        return;
+    }
+    const files = Array.isArray(payload.files)
+        ? payload.files.filter(f => f && typeof f.path === 'string') : [];
+    if (files.length === 0) {
+        alert(addShortcutErrorMessage({ error: 'drop_not_recorded' }));
+        return;
+    }
+    const categoryId = (target && Date.now() - target.at <= DROP_TARGET_TTL_MS)
+        ? target.categoryId : null;
+
+    // ドロップ先が分からないときも Python に渡す（ログに残し、理由を返してもらう）
+    const result = await pywebview.api.add_dropped_shortcuts(categoryId, files.map(f => f.path));
     const messages = [];
-    for (const file of files) {
-        if (!file || typeof file.path !== 'string' || typeof file.name !== 'string') continue;
-        const result = await pywebview.api.add_shortcut(target.categoryId, file.name, file.path);
-        if (result && result.ok === false) {
-            const message = addShortcutErrorMessage(result);
-            if (!messages.includes(message)) messages.push(message);
+    if (!result || result.error) {
+        messages.push(addShortcutErrorMessage(result || {}));
+    } else {
+        for (const r of result.results || []) {
+            if (r && r.ok === false) {
+                const message = addShortcutErrorMessage(r);
+                if (!messages.includes(message)) messages.push(message);
+            }
         }
     }
     if (messages.length) alert(messages.join('\n'));

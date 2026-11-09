@@ -175,10 +175,35 @@ pywebview._jsApiCallback('pywebviewEventHandler',
 それまでは、pywebview を更新するとき、`drop_guard.EXPECTED_PYWEBVIEW_VERSION` と `requirements.txt` を一緒に更新する。
 その前に、新しいバージョンの `util.py`（pywebviewEventHandler）と `platforms/edgechromium.py`（FilesDropped）が同じ仕組みのままであることを確認する。
 
+#### ドロップしても追加されない問題（実機確認 2026-11-09）
+
+**症状:** ログに「ネイティブの記録（FilesDropped）を受け取りました」だけが出て、何も追加されず、エラー表示も出なかった。
+
+**原因（推定）:** pywebview の JS は、ドロップのたびに `FilesDropped`（`postMessageWithAdditionalObjects`）と DOM イベント（`postMessage`）を続けて送る。File を受け渡す前者の方が後に届くことがある。
+その場合、pywebview はファイル名で照合できず、`pywebviewFullPath` が付かない。当時の `consume()` は記録が無いと**ログも出さずに**空を返し、JS にも知らせていなかった。
+上の症状はこの順番とすべて一致するが、確定には実機のログ（下記）が必要。
+
+**対策:**
+- `DropGuard.consume()` は、記録が無ければ最大 2 秒（`NATIVE_WAIT_SECONDS`）待ち、届いた記録とファイル名で照合する。受け付けるパスは常に記録（ネイティブ側）の値。待っても届かなければ拒否する。
+- 拒否したときは理由をログと UI の両方に出す。Python 側から 5 秒応答が無いときも、JS 側で理由を表示する。
+- ドロップ先はカテゴリー全体（見出しを含む）にした。カテゴリーの外なら「カテゴリーの上にドロップしてください」と表示する。
+
+**ログの見方（`%LOCALAPPDATA%\PaletteLaunch\logs\palettelaunch.log`）:** ドロップの流れの各段階に `[drop n/5]` を付けている。
+
+| 段階 | ログ | 出るところ |
+|---|---|---|
+| 1 | `[drop 1/5] ネイティブの記録（FilesDropped）を受け取りました: n 件` | `drop_guard._record_native` |
+| 2 | `[drop 2/5] DOM の drop ハンドラーが呼ばれました: n 件 …（pywebviewFullPath あり k 件）` | `API._handle_drop` |
+| 3 | `[drop 3/5] ネイティブの記録がまだ無いため、最大 2.0 秒待ちます`（逆順のときだけ）、`[drop 3/5] 照合の結果: …`、拒否したときは理由の WARNING | `DropGuard.consume` |
+| 4 | `[drop 4/5] JS に知らせます: 受け付け n 件、エラー …` | `API._handle_drop` |
+| 5 | `[drop 5/5] JS がドロップの結果を受け取りました: …`、`[drop 5/5] add_shortcut の結果: … -> OK / エラーコード` | `API.add_dropped_shortcuts` |
+
+1 と 2 の順番で、到着順が分かる（2 が先で 3 に「待ちます」が出れば逆順）。
+
 #### 実機での確認が必要なこと
 
 - エクスプローラーから .exe / .lnk / .url / .bat をカテゴリーにドロップして追加できること（.url は WebView2 がファイルとして渡さない可能性がある）。
-- カテゴリーの外にドロップしても何も起きないこと。
+- カテゴリーの外にドロップすると、理由が表示されて何も追加されないこと。
 - 二重起動すると、起動済みのウィンドウが前面に出る（出せないときはタスクバーで点滅する）こと。
 
 ---

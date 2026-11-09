@@ -226,3 +226,26 @@ def test_script_syntax_with_node():
     result = subprocess.run([node, "--check", str(SCRIPT_JS)], capture_output=True, text=True,
                             check=False)
     assert result.returncode == 0, result.stderr
+
+
+def _drop_error_codes():
+    from src.core import drop_guard
+    codes = {v for k, v in vars(drop_guard).items() if k.startswith("REASON_")}
+    return sorted(codes | {"drop_disabled", "drop_target_missing", "drop_no_response"})
+
+
+@pytest.mark.parametrize("lang", ["ja", "en"])
+@pytest.mark.parametrize("code", _drop_error_codes())
+def test_drop_error_messages_exist(lang, code):
+    """ドロップで追加されなかったときの理由は、すべて翻訳がある（UI に必ず理由を出す）"""
+    import json
+    data = json.loads((UI_DIR / "lang" / f"{lang}.json").read_text(encoding="utf-8"))
+    assert data.get("error_" + code), code
+
+
+def test_drop_flow_always_reports(script_code):
+    assert "pywebview.api.add_dropped_shortcuts(" in script_code
+    # Python 側から結果が届かないときも理由を出す
+    assert re.search(r"setTimeout\([\s\S]{0,200}error_drop_no_response", script_code)
+    # 並べ替え（ファイル以外のドラッグ）は対象外
+    assert "types.includes('Files')" in script_code

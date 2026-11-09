@@ -17,7 +17,15 @@
   CoreWebView2File.Path で、WebView2 は「ディスク上の実ファイル」以外の File を
   postMessageWithAdditionalObjects で送らせない（JS で作った File は拒否される）。
   そこで _dnd_state['paths'] を、追加（+=）を記録するリストに差し替え、記録にある
-  パスだけを信頼する。
+  パスだけを信頼する。event の pywebviewFullPath は「どの記録か」を選ぶ手がかりに
+  使うだけで、受け付けるパスは常に記録（ネイティブ側）の値にする。
+
+■ 到着順が逆になることへの対策
+  pywebview の JS は、ドロップのたびに FilesDropped（postMessageWithAdditionalObjects）
+  と DOM イベント（postMessage）を続けて送るが、File を受け渡す前者の方が後に届くことが
+  ある。その場合 pywebview はファイル名で照合できず pywebviewFullPath が付かない。
+  そこで consume() は記録が届くまで最大 NATIVE_WAIT_SECONDS 待ち、届いた記録と
+  ファイル名で照合する（pywebview 自身と同じ照合方法）。待っても記録が無ければ受け付けない。
 
 ■ 安全側に倒す
   差し替えが効かない（pywebview のバージョン違い・内部構造の変化・差し替えの失敗）
@@ -37,6 +45,7 @@ import logging
 import os
 import threading
 import time
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +53,15 @@ logger = logging.getLogger(__name__)
 EXPECTED_PYWEBVIEW_VERSION = "6.1"
 # ドロップの記録の有効期限（秒）
 DROP_TTL_SECONDS = 30.0
+# DOM イベントが先に届いたとき、ネイティブ側の記録を待つ時間（秒）
+NATIVE_WAIT_SECONDS = 2.0
+
+# 拒否の理由（API・UI のエラーコードにも使う）
+REASON_DISABLED = "drop_disabled"
+REASON_NO_RECORD = "drop_no_native_record"
+REASON_EXPIRED = "drop_expired"
+REASON_NOT_RECORDED = "drop_not_recorded"
+REASON_NO_FILES = "drop_no_files"
 
 
 def _norm(path):
@@ -60,6 +78,14 @@ def _installed_pywebview_version():
         return metadata.version("pywebview")
     except metadata.PackageNotFoundError:
         return None
+
+
+@dataclass
+class DropCheck:
+    """consume() の結果"""
+    accepted: list = field(default_factory=list)   # 受け付けたパス（ネイティブ側の値）
+    rejected: list = field(default_factory=list)   # [(ファイル名, 理由)]
+    reason: str = None                             # 1件も受け付けなかったときの代表の理由
 
 
 class _RecordingPaths(list):
@@ -85,12 +111,14 @@ class _RecordingPaths(list):
 class DropGuard:
     """ネイティブ側で取得したドロップのパスを記録し、照合する"""
 
-    def __init__(self, ttl=DROP_TTL_SECONDS, clock=time.monotonic):
+    def __init__(self, ttl=DROP_TTL_SECONDS, wait=NATIVE_WAIT_SECONDS, clock=time.monotonic):
         self._ttl = ttl
+        self._wait = wait
         self._clock = clock
-        self._lock = threading.Lock()
-        self._trusted = {}   # 正規化したパス -> 元のパス（最後の1回のドロップ分）
+        self._cond = threading.Condition()
+        self._trusted = []   # [(ファイル名, パス)]（最後の1回のドロップ分）
         self._recorded_at = None
+        self._recorder = None
         self.enabled = False
 
     # --- 差し替え ---------------------------------------------------------------
@@ -131,6 +159,7 @@ class DropGuard:
 
             current = dnd_state["paths"]
             if isinstance(current, _RecordingPaths) and current._guard is self:  # pylint: disable=protected-access
+                self._recorder = current
                 self.enabled = True
                 return True
 
@@ -143,6 +172,7 @@ class DropGuard:
             logger.exception("_dnd_state の差し替えに失敗しました。ドロップでの追加を無効にします")
             return False
 
+        self._recorder = recorder
         self.enabled = True
         logger.info("ドロップの検証を有効にしました（pywebview %s）", version)
         return True
@@ -151,42 +181,99 @@ class DropGuard:
 
     def _record_native(self, items):
         """ネイティブ側（WebView2 の FilesDropped）から届いた (name, path) の一覧を記録する"""
-        trusted = {}
+        trusted = []
         for item in items:
             if not isinstance(item, (tuple, list)) or len(item) != 2:
                 continue
-            path = item[1]
-            key = _norm(path) if isinstance(path, str) and path else None
-            if key:
-                trusted[key] = path
-        with self._lock:
+            name, path = item
+            if isinstance(path, str) and path and _norm(path):
+                trusted.append((name if isinstance(name, str) else os.path.basename(path), path))
+        with self._cond:
             # 記録は最後の1回のドロップ分だけ
             self._trusted = trusted
             self._recorded_at = self._clock()
-        logger.info("ドロップを受け取りました（%d 件）", len(trusted))
+            self._cond.notify_all()
+        logger.info("[drop 1/5] ネイティブの記録（FilesDropped）を受け取りました: %d 件 %s",
+                    len(trusted), [n for n, _ in trusted])
 
-    def consume(self, claimed_paths):
-        """
-        event に載っていたパスのうち、ネイティブ側の記録にあるものだけを返す。
-        呼ぶと記録は消える（使ったら消す）。期限切れ・無効時は空のリスト。
-        """
-        with self._lock:
+    def _take_record(self):
+        """記録を取り出して消す。記録が届くまで最大 self._wait 秒待つ"""
+        with self._cond:
+            if self._recorded_at is None and self._wait > 0:
+                logger.info("[drop 3/5] ネイティブの記録がまだ無いため、最大 %.1f 秒待ちます",
+                            self._wait)
+                self._cond.wait_for(lambda: self._recorded_at is not None, timeout=self._wait)
             trusted, recorded_at = self._trusted, self._recorded_at
-            self._trusted, self._recorded_at = {}, None
+            self._trusted, self._recorded_at = [], None
+        return trusted, recorded_at
 
-        if not self.enabled or recorded_at is None:
-            return []
+    def _forget_in_pywebview(self, entries):
+        """使った記録を pywebview 側のリストからも消す（次のドロップで誤って照合されないように）"""
+        recorder = self._recorder
+        if recorder is None:
+            return
+        for entry in entries:
+            try:
+                list.remove(recorder, entry)
+            except ValueError:
+                pass  # pywebview がすでに消した
+
+    def consume(self, files):
+        """
+        DOM の drop イベントの files（[{name, pywebviewFullPath?}, ...]）をネイティブ側の
+        記録と照合する。受け付けるパスは常に記録の値。呼ぶと記録は消える（使ったら消す）。
+        """
+        result = DropCheck()
+        files = [f for f in (files or []) if isinstance(f, dict)]
+        if not self.enabled:
+            result.reason = REASON_DISABLED
+            result.rejected = [(f.get("name"), REASON_DISABLED) for f in files]
+            logger.warning("[drop 3/5] ドロップの検証が無効なため拒否しました")
+            return result
+        if not files:
+            result.reason = REASON_NO_FILES
+            logger.warning("[drop 3/5] drop イベントにファイルが含まれていないため拒否しました")
+            return result
+
+        trusted, recorded_at = self._take_record()
+        if recorded_at is None:
+            result.reason = REASON_NO_RECORD
+            result.rejected = [(f.get("name"), REASON_NO_RECORD) for f in files]
+            logger.warning("[drop 3/5] %.1f 秒待ってもネイティブの記録が届かないため拒否しました: %s",
+                           self._wait, [f.get("name") for f in files])
+            return result
         if self._clock() - recorded_at > self._ttl:
-            logger.warning("ドロップの記録が期限切れです")
-            return []
+            result.reason = REASON_EXPIRED
+            result.rejected = [(f.get("name"), REASON_EXPIRED) for f in files]
+            logger.warning("[drop 3/5] ネイティブの記録が期限切れ（%.0f 秒）のため拒否しました",
+                           self._ttl)
+            return result
 
-        accepted, seen = [], set()
-        for path in claimed_paths:
-            key = _norm(path) if isinstance(path, str) and path else None
-            if key and key in trusted and key not in seen:
-                seen.add(key)
-                accepted.append(trusted[key])
-        rejected = len(claimed_paths) - len(accepted)
-        if rejected:
-            logger.warning("ネイティブ側の記録に無いドロップのパスを %d 件拒否しました", rejected)
-        return accepted
+        remaining = list(trusted)
+        used = []
+        for f in files:
+            name, claimed = f.get("name"), f.get("pywebviewFullPath")
+            entry = None
+            key = _norm(claimed) if isinstance(claimed, str) and claimed else None
+            if key:
+                entry = next((e for e in remaining if _norm(e[1]) == key), None)
+            if entry is None and isinstance(name, str) and name:
+                # pywebview と同じく、ファイル名で記録と照合する（到着順が逆のとき）
+                entry = next((e for e in remaining if e[0] == name), None)
+            if entry is None:
+                result.rejected.append((name, REASON_NOT_RECORDED))
+                continue
+            remaining.remove(entry)
+            used.append(entry)
+            if entry[1] not in result.accepted:
+                result.accepted.append(entry[1])
+
+        self._forget_in_pywebview(used)
+        if result.rejected:
+            logger.warning("[drop 3/5] ネイティブの記録と照合できないファイルを拒否しました: %s",
+                           [n for n, _ in result.rejected])
+        if not result.accepted:
+            result.reason = REASON_NOT_RECORDED
+        logger.info("[drop 3/5] 照合の結果: 受け付け %d 件、拒否 %d 件",
+                    len(result.accepted), len(result.rejected))
+        return result
