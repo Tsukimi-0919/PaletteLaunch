@@ -45,8 +45,6 @@ _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _EVENT_MODIFY_STATE = 0x0002
 _SYNCHRONIZE = 0x00100000
 _WAIT_OBJECT_0 = 0
-_SW_RESTORE = 9
-_SW_MINIMIZE = 6
 _FLASHW_ALL = 0x3
 _FLASHW_TIMERNOFG = 0xC
 
@@ -57,6 +55,15 @@ ACTIVATE_WAIT_SECONDS = 1.5
 
 
 # --- Win32 呼び出し（テストでは差し替える） -------------------------------------
+
+class _WINDOWPLACEMENT(ctypes.Structure):
+    _fields_ = [("length", wintypes.UINT), ("flags", wintypes.UINT), ("showCmd", wintypes.UINT),
+                ("ptMinPosition", wintypes.POINT), ("ptMaxPosition", wintypes.POINT),
+                ("rcNormalPosition", wintypes.RECT)]
+
+
+_WPF_RESTORETOMAXIMIZED = 0x2
+
 
 class _FLASHWINFO(ctypes.Structure):
     _fields_ = [("cbSize", wintypes.UINT), ("hwnd", wintypes.HWND), ("dwFlags", wintypes.DWORD),
@@ -75,7 +82,8 @@ class Win32:
         u.GetWindowThreadProcessId.restype = wintypes.DWORD
         u.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
         u.IsIconic.argtypes = [wintypes.HWND]
-        u.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        u.IsZoomed.argtypes = [wintypes.HWND]
+        u.GetWindowPlacement.argtypes = [wintypes.HWND, ctypes.POINTER(_WINDOWPLACEMENT)]
         u.SetForegroundWindow.argtypes = [wintypes.HWND]
         u.GetForegroundWindow.restype = wintypes.HWND
         u.AllowSetForegroundWindow.argtypes = [wintypes.DWORD]
@@ -127,11 +135,16 @@ class Win32:
     def is_iconic(self, hwnd):
         return bool(self.user32.IsIconic(hwnd))
 
-    def restore(self, hwnd):
-        self.user32.ShowWindow(hwnd, _SW_RESTORE)
+    def is_zoomed(self, hwnd):
+        return bool(self.user32.IsZoomed(hwnd))
 
-    def minimize(self, hwnd):
-        self.user32.ShowWindow(hwnd, _SW_MINIMIZE)
+    def restores_to_maximized(self, hwnd):
+        """最小化しているウィンドウが、復元すると最大化に戻るか（最大化から最小化した）"""
+        placement = _WINDOWPLACEMENT()
+        placement.length = ctypes.sizeof(_WINDOWPLACEMENT)
+        if not self.user32.GetWindowPlacement(hwnd, ctypes.byref(placement)):
+            return False
+        return bool(placement.flags & _WPF_RESTORETOMAXIMIZED)
 
     def set_foreground(self, hwnd):
         ok = bool(self.user32.SetForegroundWindow(hwnd))
@@ -164,6 +177,47 @@ class Win32:
     def close(self, handle):
         if handle:
             self.kernel32.CloseHandle(handle)
+
+
+# --- pywebview の API での復元・前面化 ---------------------------------------------
+
+def activate_window_via_pywebview(window, win32, hwnd, settle=0.3):
+    """
+    1つ目のインスタンスが、自分のウィンドウを復元して前面に出す。
+    状態の変更は pywebview の API（UI スレッドで WinForms の WindowState / Show / Activate を
+    変える）だけで行う。
+    UI スレッド以外（この待ち受けスレッドなど）から Win32 の ShowWindow で最小化から復元すると、
+    WinForms の WindowState とコントロールの大きさは正しく戻るのに、WebView2 の中身が描画されず
+    背景色だけの空のウィンドウになる（2026-11-10 に確認。同じ ShowWindow でも UI スレッドで
+    呼べば描画される）。WebView2 のコントローラーは UI スレッドで操作する前提のため。
+    Win32 は状態を調べる（IsIconic など）ためだけに使う。
+    戻り値: (前面に出せたか, 使った方法)
+    """
+    def restore_from_minimized():
+        if win32.restores_to_maximized(hwnd):
+            window.maximize()   # 最大化から最小化したウィンドウは最大化に戻す
+        else:
+            window.restore()
+
+    if win32.is_iconic(hwnd):
+        restore_from_minimized()
+    window.show()  # Show() + Activate()（前面化の権限があれば前面に出る）
+    time.sleep(settle)
+    if win32.foreground_window() == hwnd:
+        return True, "show"
+
+    # 前面化の権限が無いと Activate は効かない。最小化 → 復元はウィンドウを有効にするので、
+    # それを pywebview の API で行う（最大化していたら最大化に戻す）。
+    zoomed = win32.is_zoomed(hwnd)
+    window.minimize()
+    time.sleep(settle)
+    if zoomed:
+        window.maximize()
+    else:
+        window.restore()
+    window.show()
+    time.sleep(settle)
+    return win32.foreground_window() == hwnd, "minimize-restore"
 
 
 # --- 名前 ---------------------------------------------------------------------
@@ -270,7 +324,8 @@ def remove_record(path, pid):
 class InstanceHost:
     """1つ目のインスタンス: 記録の作成と、前面化の依頼の待ち受け"""
 
-    def __init__(self, path=None, win32=None, pid=None, event_name=None):
+    def __init__(self, window=None, path=None, win32=None, pid=None, event_name=None):
+        self._window = window   # pywebview のウィンドウ（復元・前面化に使う）
         self._path = path or default_instance_file()
         self._win32 = win32 or Win32()
         self._pid = pid or os.getpid()
@@ -320,26 +375,17 @@ class InstanceHost:
 
     def bring_to_front(self):
         """依頼を受けて自分のウィンドウを前面に出す（2つ目から権限を渡されている前提）"""
-        hwnd = self._hwnd
-        logger.info("[instance] 前面化の依頼を受けました")
-        if self._win32.is_iconic(hwnd):
-            self._win32.restore(hwnd)
-        ok, error = self._win32.set_foreground(hwnd)
-        if ok and self._win32.foreground_window() == hwnd:
-            logger.info("[instance] 前面に出しました")
-            return True
-        # 前面化の権限が無いと SetForegroundWindow は拒否される。
-        # 最小化 → 復元はウィンドウを有効にする（Windows が許す）ので、それで前面に出す。
-        # 最大化していたウィンドウは、復元で最大化に戻る。
-        logger.info("[instance] SetForegroundWindow が拒否されたため（エラー %d）、"
-                    "最小化 → 復元で前面に出します", error)
-        self._win32.minimize(hwnd)
-        self._win32.restore(hwnd)
-        if self._win32.foreground_window() == hwnd:
-            logger.info("[instance] 前面に出しました（最小化 → 復元）")
-            return True
-        logger.warning("[instance] 前面に出せません")
-        return False
+        logger.info("[instance] 前面化の依頼を受けました（最小化 %s、最大化 %s）",
+                    self._win32.is_iconic(self._hwnd), self._win32.is_zoomed(self._hwnd))
+        if self._window is None:
+            logger.warning("[instance] pywebview のウィンドウが無いため、前面に出せません")
+            return False
+        ok, method = activate_window_via_pywebview(self._window, self._win32, self._hwnd)
+        if ok:
+            logger.info("[instance] 前面に出しました（%s）", method)
+        else:
+            logger.warning("[instance] 前面に出せません（%s を試しました）", method)
+        return ok
 
     def close(self):
         self._stop.set()
@@ -415,8 +461,8 @@ def activate_existing(path=None, win32=None, event_name=None,
                 logger.info("[instance] 起動済みのウィンドウが前面に出ました")
                 return True
             time.sleep(0.1)
-        if win32.is_iconic(hwnd):
-            win32.restore(hwnd)
+        # 2つ目から ShowWindow で復元すると、1つ目の WebView2 が描画されなくなるので、
+        # ここでは状態を変えずに前面化だけを試す
         ok, error = win32.set_foreground(hwnd)
         if ok and win32.foreground_window() == hwnd:
             logger.info("[instance] 起動済みのウィンドウを前面に出しました（2つ目から）")

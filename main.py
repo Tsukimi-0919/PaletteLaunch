@@ -96,7 +96,7 @@ def main():
     register_drop_handler(window, api, drop_guard)
 
     # 二重起動のとき、2つ目がこのウィンドウを前面に出せるように PID とウィンドウを記録する
-    host = single_instance.InstanceHost()
+    host = single_instance.InstanceHost(window)
     window.events.shown += host.publish
 
     try:

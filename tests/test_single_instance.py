@@ -22,6 +22,8 @@ class FakeWin32:
         self.windows = dict(windows or {})
         self.foreground = 0
         self.iconic = set()
+        self.zoomed = set()
+        self.restore_to_max = set()
         self.calls = []
         self.allow_result = (True, 0)
         self.set_foreground_ok = True
@@ -46,17 +48,11 @@ class FakeWin32:
     def is_iconic(self, hwnd):
         return hwnd in self.iconic
 
-    def restore(self, hwnd):
-        self.calls.append(("restore", hwnd))
-        self.iconic.discard(hwnd)
-        if self.restore_activates:
-            self.foreground = hwnd
+    def is_zoomed(self, hwnd):
+        return hwnd in self.zoomed
 
-    restore_activates = False
-
-    def minimize(self, hwnd):
-        self.calls.append(("minimize", hwnd))
-        self.iconic.add(hwnd)
+    def restores_to_maximized(self, hwnd):
+        return hwnd in self.restore_to_max
 
     def set_foreground(self, hwnd):
         self.calls.append(("set_foreground", hwnd))
@@ -93,6 +89,41 @@ class FakeWin32:
 
     def close(self, handle):
         pass
+
+
+class FakeWindow:
+    """pywebview のウィンドウの代わり。win32 の状態を pywebview と同じように変える"""
+
+    def __init__(self, win32, hwnd=HWND, show_activates=True, restore_activates=True):
+        self.win32, self.hwnd = win32, hwnd
+        self.show_activates = show_activates
+        self.restore_activates = restore_activates
+        self.calls = []
+
+    def restore(self):
+        self.calls.append("restore")
+        self.win32.iconic.discard(self.hwnd)
+        self.win32.zoomed.discard(self.hwnd)
+        if self.restore_activates:
+            self.win32.foreground = self.hwnd
+
+    def maximize(self):
+        self.calls.append("maximize")
+        self.win32.iconic.discard(self.hwnd)
+        self.win32.zoomed.add(self.hwnd)
+        if self.restore_activates:
+            self.win32.foreground = self.hwnd
+
+    def minimize(self):
+        self.calls.append("minimize")
+        if self.hwnd in self.win32.zoomed:
+            self.win32.restore_to_max.add(self.hwnd)
+        self.win32.iconic.add(self.hwnd)
+
+    def show(self):
+        self.calls.append("show")
+        if self.show_activates:
+            self.win32.foreground = self.hwnd
 
 
 @pytest.fixture
@@ -214,30 +245,88 @@ def test_host_without_window_does_not_record(record, caplog):
     assert "自分のウィンドウが見つからない" in caplog.text
 
 
-def test_host_brings_itself_to_front(record):
+def make_host(record, win32, window):
+    host = si.InstanceHost(window, path=record, win32=win32, pid=PID, event_name="Local\\Test")
+    assert host.publish(attempts=1, interval=0)
+    return host
+
+
+@pytest.fixture
+def no_settle(monkeypatch):
+    monkeypatch.setattr(si.time, "sleep", lambda s: None)
+
+
+def test_host_restores_minimized_window_with_pywebview(record, no_settle):
     win32 = FakeWin32({HWND: (PID, si.WINDOW_TITLE)})
     win32.iconic.add(HWND)
-    host = si.InstanceHost(path=record, win32=win32, pid=PID, event_name="Local\\Test")
-    host.publish(attempts=1, interval=0)
+    window = FakeWindow(win32)
+    host = make_host(record, win32, window)
     try:
         assert host.bring_to_front() is True
-        assert win32.calls[:2] == [("restore", HWND), ("set_foreground", HWND)]
+        assert window.calls == ["restore", "show"]
     finally:
         host.close()
 
 
-def test_host_falls_back_to_minimize_restore(record):
-    """SetForegroundWindow を拒否されたら、最小化 → 復元で前面に出す"""
+def test_host_returns_to_maximized(record, no_settle):
+    """最大化から最小化したウィンドウは、最大化に戻す"""
     win32 = FakeWin32({HWND: (PID, si.WINDOW_TITLE)})
-    win32.set_foreground_ok = False
-    win32.restore_activates = True
-    host = si.InstanceHost(path=record, win32=win32, pid=PID, event_name="Local\\Test")
-    host.publish(attempts=1, interval=0)
+    win32.iconic.add(HWND)
+    win32.restore_to_max.add(HWND)
+    window = FakeWindow(win32)
+    host = make_host(record, win32, window)
     try:
         assert host.bring_to_front() is True
-        assert win32.calls[-2:] == [("minimize", HWND), ("restore", HWND)]
+        assert window.calls == ["maximize", "show"]
+        assert HWND in win32.zoomed
     finally:
         host.close()
+
+
+def test_host_behind_window_is_shown(record, no_settle):
+    win32 = FakeWin32({HWND: (PID, si.WINDOW_TITLE)})
+    window = FakeWindow(win32)
+    host = make_host(record, win32, window)
+    try:
+        assert host.bring_to_front() is True
+        assert window.calls == ["show"]
+    finally:
+        host.close()
+
+
+@pytest.mark.parametrize("zoomed,expected", [(False, "restore"), (True, "maximize")])
+def test_host_falls_back_to_minimize_restore(record, no_settle, zoomed, expected):
+    """前面化の権限が無く show で前に出ないときは、pywebview の API で最小化 → 復元する"""
+    win32 = FakeWin32({HWND: (PID, si.WINDOW_TITLE)})
+    if zoomed:
+        win32.zoomed.add(HWND)
+    window = FakeWindow(win32, show_activates=False)
+    host = make_host(record, win32, window)
+    try:
+        assert host.bring_to_front() is True
+        assert window.calls == ["show", "minimize", expected, "show"]
+    finally:
+        host.close()
+
+
+def test_host_without_pywebview_window_does_nothing(record, caplog):
+    win32 = FakeWin32({HWND: (PID, si.WINDOW_TITLE)})
+    host = make_host(record, win32, None)
+    try:
+        with caplog.at_level(logging.WARNING):
+            assert host.bring_to_front() is False
+        assert "pywebview のウィンドウが無い" in caplog.text
+    finally:
+        host.close()
+
+
+def test_state_changes_do_not_use_win32_show_window():
+    """Win32 の ShowWindow で復元すると WebView2 が描画されなくなる（別スレッドから呼んだ場合）。
+    状態の変更は pywebview の API だけで行う"""
+    source = open(si.__file__, encoding="utf-8").read()
+    assert "user32.ShowWindow" not in source
+    assert "ShowWindowAsync" not in source
+    assert not hasattr(si.Win32, "restore") and not hasattr(si.Win32, "minimize")
 
 
 # --- 2つ目: 起動済みのウィンドウを前面に出す ---------------------------------------

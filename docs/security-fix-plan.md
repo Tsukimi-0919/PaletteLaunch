@@ -217,11 +217,34 @@ pywebview._jsApiCallback('pywebviewEventHandler',
 **対策（`src/core/single_instance.py`）:**
 1. 1つ目は、ウィンドウを表示した時点で、PID とウィンドウハンドルを `%LOCALAPPDATA%\PaletteLaunch\instance.json` に記録する（終了時に消す）。
 2. 2つ目は記録を読み（1つ目がまだ起動中なら最大 5 秒待つ）、そのウィンドウが存在し、記録の PID のもので、タイトルが `PaletteLaunch` であることを確かめる。どれかが違えば何もしない。
-3. 2つ目は `AllowSetForegroundWindow(PID)` で権限を渡し、名前付きイベントで1つ目に前面化を依頼する。1つ目は自分で `SetForegroundWindow` する。拒否されたら「最小化 → 復元」で前面に出す（最大化は保たれる）。
-4. 2つ目は 1.5 秒以内に前面に出たか確かめ、出なければ自分でも試し、だめならタスクバーで点滅させる。
+3. 2つ目は `AllowSetForegroundWindow(PID)` で権限を渡し、名前付きイベントで1つ目に前面化を依頼する。1つ目は pywebview の API で復元・前面化する（下記）。
+4. 2つ目は 1.5 秒以内に前面に出たか確かめ、出なければ自分でも `SetForegroundWindow` を試し（ウィンドウの状態は変えない）、だめならタスクバーで点滅させる。
 5. どの段階の結果も `[instance]` のログに出す。
 
-開発環境で確認した結果: 2つ目の `AllowSetForegroundWindow` は権限が無く失敗した（エラー 5）。それでも1つ目が「最小化 → 復元」で前面に出た。
+開発環境で確認した結果: 2つ目の `AllowSetForegroundWindow` は権限が無く失敗した（エラー 5）。それでも1つ目は前面に出た。
+
+#### 前面に出たウィンドウの中身が描画されない問題（実機確認 2026-11-10）
+
+**症状:** 最小化していた1つ目が前面に出たが、中身が描画されず、テーマの背景色だけの空のウィンドウになった（大きさを変えると戻った）。
+
+**原因（再現して確認）:** 1つ目の待ち受けスレッド（UI スレッドではない）から、Win32 の `ShowWindow` で直接「最小化 → 復元」していた。
+- WinForms の `WindowState` は `Normal` に戻り、WebView2 のコントロールの大きさも元に戻っていた（WinForms は復元に気づいている）。
+- 同じ `ShowWindow(SW_RESTORE)` でも、pywebview の UI スレッド上で呼ぶと描画された。WebView2 のコントローラーは UI スレッドで操作する前提のため、UI スレッド以外からの復元では描画が再開されないと考えられる。
+
+**対策:** 復元と前面化は pywebview の API だけで行う（`window.restore()` / `window.maximize()` / `window.minimize()` / `window.show()`。どれも UI スレッドで WinForms の `WindowState` / `Show` / `Activate` を変える）。
+- 最小化していれば、`GetWindowPlacement` の `WPF_RESTORETOMAXIMIZED` を見て、最大化から最小化したなら `maximize()`、そうでなければ `restore()` する。その後 `show()` する。
+- それでも前面に出ない（前面化の権限が無い）ときは、`minimize()` → `restore()`（最大化していたら `maximize()`）→ `show()` を行う。
+- Win32 は状態を調べる（`IsIconic` / `IsZoomed` / `GetWindowPlacement` / `GetForegroundWindow`）ためだけに使う。`ShowWindow` は使わない（`tests/test_single_instance.py` で確認）。
+
+**確認（開発環境、実際の UI で自動確認）:** 背景色以外の画素の割合を測った。通常の大きさで 0.203、最大化で 0.117 なら中身が描画されている。
+
+| 1つ目の状態 | 結果 |
+|---|---|
+| 最小化 | 前面に出て描画された（0.203）。使った方法は `show` |
+| 最大化してから最小化 | 最大化に戻り、描画された（0.117）。使った方法は `show` |
+| 他のウィンドウの後ろ | 前面に出て描画された（0.203）。使った方法は `minimize-restore` |
+
+手動の確認手順は `docs/build.md` の「4-4. 二重起動の確認」にある。
 
 ---
 
