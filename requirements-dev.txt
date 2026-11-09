@@ -1,0 +1,17 @@
+# 開発用の依存（テスト・監査・ビルド）
+-r requirements.txt
+
+# テスト
+pytest==8.4.2
+colorama==0.4.6
+iniconfig==2.1.0
+packaging==25.0
+pluggy==1.6.0
+Pygments==2.19.2
+
+# 脆弱性監査
+pip-audit==2.10.1
+
+# ビルド（PyInstaller の依存。PyInstaller 本体は未固定）
+altgraph==0.17.5
+pywin32-ctypes==0.2.3

@@ -1,24 +1,11 @@
-import os
 import pytest
 from src.core.config import ConfigManager
 
-# テスト用のファイル名
-TEST_CONFIG = "test_settings.json"
-
 
 @pytest.fixture
-def manager():
-    """各テストの前に実行される準備（フィクスチャ）"""
-    # テスト開始時にファイルを削除しておく
-    if os.path.exists(TEST_CONFIG):
-        os.remove(TEST_CONFIG)
-
-    m = ConfigManager(TEST_CONFIG)
-    yield m
-
-    # テスト終了後にファイルを片付ける
-    if os.path.exists(TEST_CONFIG):
-        os.remove(TEST_CONFIG)
+def manager(tmp_path):
+    """一時フォルダ上の settings.json を使う ConfigManager（プロジェクト直下には書かない）"""
+    return ConfigManager(str(tmp_path / "settings.json"))
 
 
 def test_initial_structure(manager):
@@ -47,14 +34,7 @@ def test_update_setting(manager):
 
 def test_edit_category(manager):
     """カテゴリー名の変更ができるか（新機能）"""
-    data = manager.get_all()
-    cat_id = data["categories"][0]["id"]
-
-    # ConfigManagerに直接 edit_category メソッドを実装している場合
-    # もしAPI.py側にしかない場合は、ConfigManager経由のロジックをテストします
-    manager.update_shortcut = None  # ConfigManagerのメソッド名に合わせて調整
-
-    # 今回実装したカテゴリー名の更新
+    # カテゴリー名の更新
     data = manager._get_raw_data()
     data["categories"][0]["name"] = "Updated Name"
     manager.save(data)
