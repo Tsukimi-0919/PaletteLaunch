@@ -30,5 +30,12 @@
     "notice_read_only": "The settings file (settings.json) could not be read correctly, so the app started in read-only mode. Changes will not be saved.\nFix the settings file or restore it from a backup, then restart the app.",
     "notice_restored": "The settings file (settings.json) was broken, so it was restored from the previous save (settings.json.bak).",
     "notice_recreated": "The settings file (settings.json) was empty, so a new one was created.",
-    "notice_corrupt_copy": "The broken file has been kept as {file}."
+    "notice_corrupt_copy": "The broken file has been kept as {file}.",
+    "error_drop_disabled": "Adding by drag and drop is not available in this environment. Use \"+ APP\" instead.",
+    "error_drop_no_native_record": "Could not receive the dropped file. Drop it again or use \"+ APP\".",
+    "error_drop_expired": "Too much time has passed since the drop. Please drop the file again.",
+    "error_drop_not_recorded": "Could not verify the dropped file. Drop it again or use \"+ APP\".",
+    "error_drop_target_missing": "Drop the file onto the category you want to add it to.",
+    "error_drop_no_response": "Could not process the drop. Use \"+ APP\" instead.",
+    "error_drop_no_files": "The dropped item does not contain any files."
 }

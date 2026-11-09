@@ -28,5 +28,12 @@
     "notice_read_only": "設定ファイル（settings.json）を正しく読み込めなかったため、読み取り専用で起動しました。この状態での変更は保存されません。\n設定ファイルを直すか、バックアップから戻してから、アプリを起動し直してください。",
     "notice_restored": "設定ファイル（settings.json）が壊れていたため、1つ前の保存（settings.json.bak）から復元しました。",
     "notice_recreated": "設定ファイル（settings.json）が空だったため、新しく作成しました。",
-    "notice_corrupt_copy": "壊れていたファイルは {file} として残してあります。"
+    "notice_corrupt_copy": "壊れていたファイルは {file} として残してあります。",
+    "error_drop_disabled": "この環境ではドラッグ＆ドロップでの追加が使えません。「+ アプリ」から追加してください。",
+    "error_drop_no_native_record": "ドロップしたファイルの情報を受け取れませんでした。もう一度ドロップするか、「+ アプリ」から追加してください。",
+    "error_drop_expired": "ドロップしてから時間がたちすぎました。もう一度ドロップしてください。",
+    "error_drop_not_recorded": "ドロップしたファイルを確認できませんでした。もう一度ドロップするか、「+ アプリ」から追加してください。",
+    "error_drop_target_missing": "追加先のカテゴリーの上にドロップしてください。",
+    "error_drop_no_response": "ドロップを処理できませんでした。「+ アプリ」から追加してください。",
+    "error_drop_no_files": "ドロップされたものにファイルが含まれていません。"
 }

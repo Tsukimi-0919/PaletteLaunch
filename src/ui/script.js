@@ -17,6 +17,25 @@ let i18n = {}; // 翻訳データを保持する変数
 let availableThemes = []; // get_themes() の結果
 let initialized = false;
 
+// 描画の直列化（実行中に呼ばれたら、終わったあとに1回だけ描き直す）
+let renderRunning = null;
+let renderRequested = false;
+// Sortable のインスタンス（カテゴリー用は1つだけ、グリッド用は描き直すたびに destroy する）
+let categorySortable = null;
+// カテゴリーの要素 → カテゴリー ID（保存データを DOM の属性に入れずに持つ）
+let sectionCategoryIds = new WeakMap();
+let gridSortables = [];
+// 起動の連打防止（全カード共通）
+const LAUNCH_COOLDOWN_MS = 1000;
+let launchLockedUntil = 0;
+// ドロップ先のカテゴリー（Python 側の通知 paletteLaunchOnDrop と組み合わせる）
+const DROP_TARGET_TTL_MS = 30000;
+// ドロップ後、Python 側から結果が届かないときに理由を表示するまでの時間
+// （Python 側はネイティブの記録を最大2秒待つ: drop_guard.NATIVE_WAIT_SECONDS）
+const DROP_RESPONSE_TIMEOUT_MS = 5000;
+let pendingDrop = null;
+let dropResponseTimer = null;
+
 // --- 入力値の正規化 -----------------------------------------------------------
 
 function normalizeTheme(themeName) {
@@ -75,6 +94,26 @@ async function reportSaveFailure() {
 }
 
 function bindStaticHandlers() {
+    // ページ全体でファイルのドロップを受け付ける（drop イベントを発生させるため）。
+    // カテゴリーの上なら、そのカテゴリーに追加する（createCategoryElement で categoryId を入れる）。
+    // カテゴリーの外なら categoryId: null のまま、Python 側で「ドロップ先が分からない」になる。
+    // ファイルをドラッグしている間は、カーソルの下のカテゴリーを強調する（並べ替えでは強調しない）。
+    document.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (isFileDrag(e)) setDropHighlight(sectionAt(e.target));
+    });
+    // ウィンドウの外に出た（relatedTarget が無い）・キャンセルした（Esc でも dragleave が来る）
+    document.addEventListener('dragleave', (e) => {
+        if (!e.relatedTarget) setDropHighlight(null);
+    });
+    document.addEventListener('dragend', () => setDropHighlight(null));
+    document.addEventListener('drop', (e) => {
+        e.preventDefault();
+        setDropHighlight(null);
+        if (!isFileDrag(e)) return;  // カードの並べ替え（Sortable）は対象外
+        const section = e.target.closest ? e.target.closest('.category-section') : null;
+        startDrop(section ? sectionCategoryIds.get(section) || null : null);
+    });
     document.getElementById('lang-select')
         .addEventListener('change', (event) => changeLanguage(event.target.value));
     document.getElementById('theme-select')
@@ -91,7 +130,28 @@ function bindStaticHandlers() {
 
 // --- 描画 ---------------------------------------------------------------------
 
-async function renderApp() {
+// renderApp は直列化して呼ぶ（同時に2つ走らせない）
+function renderApp() {
+    if (renderRunning) {
+        renderRequested = true;
+        return renderRunning;
+    }
+    renderRunning = (async () => {
+        try {
+            do {
+                renderRequested = false;
+                await renderAppOnce();
+            } while (renderRequested);
+        } finally {
+            renderRunning = null;
+        }
+    })();
+    return renderRunning;
+}
+
+async function renderAppOnce() {
+    // 描き直すと要素が入れ替わるので、強調も消しておく
+    setDropHighlight(null);
     // テーマを取得
     await initThemeSelector();
     const container = document.getElementById('app-container');
@@ -113,6 +173,9 @@ async function renderApp() {
     // セレクトボックスの値を現在の設定に合わせる
     document.getElementById('lang-select').value = language;
 
+    // 古いグリッドの Sortable を片付けてから作り直す
+    gridSortables.forEach(sortable => sortable.destroy());
+    gridSortables = [];
     container.replaceChildren();
 
     categories.forEach(category => {
@@ -120,12 +183,14 @@ async function renderApp() {
         container.appendChild(catElement);
     });
 
-    // Sortable（カテゴリー用）
-    new Sortable(container, {
-        animation: 150,
-        handle: '.category-header',
-        onEnd: async () => { await syncOrder(); }
-    });
+    // Sortable（カテゴリー用）。container は作り直さないので初回だけ生成する
+    if (!categorySortable) {
+        categorySortable = new Sortable(container, {
+            animation: 150,
+            handle: '.category-header',
+            onEnd: async () => { await syncOrder(); }
+        });
+    }
 
     // テーマの適用
     applyTheme(appConfig.theme);
@@ -170,22 +235,10 @@ function createCategoryElement(category) {
 
     catElement.append(header, gridElement);
 
-    // --- ドラッグ＆ドロップイベント ---
-    gridElement.addEventListener('dragover', (e) => { e.preventDefault(); gridElement.classList.add('drag-over'); });
-    gridElement.addEventListener('dragleave', () => { gridElement.classList.remove('drag-over'); });
-    gridElement.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        gridElement.classList.remove('drag-over');
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            for (let file of files) {
-                const path = file.path || "";
-                const name = file.name.replace(/\.[^/.]+$/, "");
-                if (path) await pywebview.api.add_shortcut(category.id, name, path);
-            }
-            renderApp();
-        }
-    });
+    // --- ドラッグ＆ドロップ ---
+    // ドロップ先はカテゴリー全体（見出しを含む）。ドラッグ中の強調とドロップは document で扱う。
+    // フルパスは Python 側で受け取り、paletteLaunchOnDrop で知らされる（WebView2 には file.path が無い）
+    sectionCategoryIds.set(catElement, category.id);
 
     // --- ショートカットの表示処理 ---
     category.shortcuts.forEach(item => {
@@ -193,13 +246,13 @@ function createCategoryElement(category) {
     });
 
     // Sortable（ショートカット用）
-    new Sortable(gridElement, {
+    gridSortables.push(new Sortable(gridElement, {
         group: 'shared-shortcuts', // 【重要】これに共通の名前をつけることでカテゴリー間の移動が可能になる
         animation: 150,
         ghostClass: 'sortable-ghost',
         // 他のカテゴリーにドロップされた時も保存を走らせる
         onEnd: async () => { await syncOrder(); }
-    });
+    }));
 
     return catElement;
 }
@@ -214,7 +267,8 @@ function createIconElement(item) {
     const placeholder = document.createElement('div');
     placeholder.className = 'icon-placeholder';
     const initial = document.createElement('span');
-    initial.textContent = (typeof item.name === 'string' && item.name.length > 0) ? item.name[0] : '';
+    // Array.from: 絵文字などのサロゲートペアを半分に割らない
+    initial.textContent = (typeof item.name === 'string' && item.name.length > 0) ? Array.from(item.name)[0] : '';
     placeholder.appendChild(initial);
     return placeholder;
 }
@@ -251,11 +305,17 @@ function createShortcutElement(item) {
 
     itemElement.append(controls, iconContainer, label);
 
-    itemElement.addEventListener('click', async () => {
-        const success = await pywebview.api.launch_executable(item.id);
-        if (!success) alert("アプリの起動に失敗しました。");
-    });
+    itemElement.addEventListener('click', () => launchShortcut(item.id));
     return itemElement;
+}
+
+// 起動。クリックから約1秒は、どのカードのクリックも無視する（二重起動対策）
+async function launchShortcut(id) {
+    const now = Date.now();
+    if (now < launchLockedUntil) return;
+    launchLockedUntil = now + LAUNCH_COOLDOWN_MS;
+    const success = await pywebview.api.launch_executable(id);
+    if (!success) alert(i18n.error_launch);
 }
 
 // --- テーマ -------------------------------------------------------------------
@@ -331,15 +391,103 @@ async function addShortcut(categoryId) {
 
         if (name) {
             const result = await pywebview.api.add_shortcut(categoryId, name, path);
-            if (result && result.ok === false) {
-                // メッセージは alert で表示する（innerHTML には入れない）
-                const code = String(result.error || "");
-                alert(i18n["error_" + code] || i18n.error_add_shortcut || code);
-            }
+            if (result && result.ok === false) alert(addShortcutErrorMessage(result));
             renderApp();
         }
     }
 }
+
+// add_shortcut のエラーコードを表示用の文に変える（alert で表示する。innerHTML には入れない）
+function addShortcutErrorMessage(result) {
+    const code = String(result.error || "");
+    return i18n["error_" + code] || i18n.error_add_shortcut || code;
+}
+
+// --- ドラッグ＆ドロップ -------------------------------------------------------
+// 流れ: document の drop（startDrop）→ Python の drop ハンドラーがネイティブの記録と照合
+// → paletteLaunchOnDrop（onFilesDropped）→ add_dropped_shortcuts。
+// 追加されなかったときは、必ず理由を alert で表示する。
+
+// ドラッグ中の強調。dragover は止まっていても繰り返し届くので、届かなくなったら消す
+// （ウィンドウの外へ出た・キャンセルしたのに dragleave が来ない場合の保険）
+const DROP_HIGHLIGHT_IDLE_MS = 300;
+let dropHighlight = null;
+let dropHighlightTimer = null;
+
+function sectionAt(target) {
+    const section = target && target.closest ? target.closest('.category-section') : null;
+    return section && sectionCategoryIds.has(section) ? section : null;
+}
+
+function setDropHighlight(section) {
+    if (dropHighlight !== section) {
+        if (dropHighlight) dropHighlight.classList.remove('drop-target');
+        dropHighlight = section;
+        if (section) section.classList.add('drop-target');
+    }
+    clearTimeout(dropHighlightTimer);
+    dropHighlightTimer = section
+        ? setTimeout(() => setDropHighlight(null), DROP_HIGHLIGHT_IDLE_MS) : null;
+}
+
+function isFileDrag(e) {
+    const types = e.dataTransfer ? Array.from(e.dataTransfer.types || []) : [];
+    return types.includes('Files');
+}
+
+function startDrop(categoryId) {
+    pendingDrop = { categoryId, at: Date.now() };
+    clearTimeout(dropResponseTimer);
+    // Python 側から結果が届かない（ドロップの検証が無効、途中で止まった）ときも理由を出す
+    dropResponseTimer = setTimeout(() => {
+        dropResponseTimer = null;
+        if (pendingDrop) {
+            pendingDrop = null;
+            alert(i18n.error_drop_no_response || i18n.error_add_shortcut);
+        }
+    }, DROP_RESPONSE_TIMEOUT_MS);
+}
+
+// ドロップの結果（Python 側の drop ハンドラーから呼ばれる）。
+// payload: {files: [{name, path}], error: null | エラーコード}。
+// path は Python 側でネイティブの記録と照合済みで、add_dropped_shortcuts でも改めて検証される。
+async function onFilesDropped(payload) {
+    clearTimeout(dropResponseTimer);
+    dropResponseTimer = null;
+    const target = pendingDrop;
+    pendingDrop = null;
+
+    if (!payload || typeof payload !== 'object') return;
+    if (payload.error) {
+        alert(addShortcutErrorMessage(payload));
+        return;
+    }
+    const files = Array.isArray(payload.files)
+        ? payload.files.filter(f => f && typeof f.path === 'string') : [];
+    if (files.length === 0) {
+        alert(addShortcutErrorMessage({ error: 'drop_not_recorded' }));
+        return;
+    }
+    const categoryId = (target && Date.now() - target.at <= DROP_TARGET_TTL_MS)
+        ? target.categoryId : null;
+
+    // ドロップ先が分からないときも Python に渡す（ログに残し、理由を返してもらう）
+    const result = await pywebview.api.add_dropped_shortcuts(categoryId, files.map(f => f.path));
+    const messages = [];
+    if (!result || result.error) {
+        messages.push(addShortcutErrorMessage(result || {}));
+    } else {
+        for (const r of result.results || []) {
+            if (r && r.ok === false) {
+                const message = addShortcutErrorMessage(r);
+                if (!messages.includes(message)) messages.push(message);
+            }
+        }
+    }
+    if (messages.length) alert(messages.join('\n'));
+    renderApp();
+}
+window.paletteLaunchOnDrop = onFilesDropped;
 
 // ショートカット削除
 async function removeShortcut(event, id) {

@@ -30,7 +30,7 @@ Claude Code は **1セッション＝1フェーズ** で進めること。
 ## Phase 1: 起動処理（src/core/launcher.py）
 
 | # | 問題 | 修正方針 |
-|---|------|----------|
+| --- | --- | --- |
 | 1 | `.lnk` の引数・作業フォルダが捨てられる（Valorant が起動せず Riot Client が開く） | `.lnk` / `.url` / `.bat` は解析せず、元ファイルを `os.startfile()` で開く |
 | 2 | `Popen(文字列)` で引数付き文字列が実行され、引用符なしパス問題（`C:\Program.exe`）も起きる | `.exe` は `Popen([path], cwd=dirname)` とリストで渡す |
 | 3 | 管理者権限が必要な exe で WinError 740 | 740 のときは `os.startfile` にフォールバックする |
@@ -108,7 +108,7 @@ Claude Code は **1セッション＝1フェーズ** で進めること。
 ## Phase 5: データ保護（src/core/config.py, api.py）
 
 | # | 問題 | 修正方針 |
-|---|------|----------|
+| --- | --- | --- |
 | 1 | JSON が壊れているとデフォルト値が返り、次の保存で全データを上書き | 読み込み失敗時は「読み取り専用モード」にして保存を拒否し、UI に通知する。壊れたファイルは `settings.corrupt-日時.json` として退避する |
 | 2 | 書き込みが原子的でない | 同じフォルダに一時ファイルを書き → `flush` + `os.fsync` → `os.replace` で差し替える |
 | 3 | バックアップがない | 保存前に `settings.json.bak` を1世代残す。読み込み失敗時は `.bak` からの復元を試みる |
@@ -131,6 +131,120 @@ Claude Code は **1セッション＝1フェーズ** で進めること。
 - アイコン生成元の名前が空文字のときに `item.name[0]` で落ちないようにする。
 - `print` を `logging` に置き換え、EXE の隣（または `%LOCALAPPDATA%\PaletteLaunch\`）にログファイルを出力する（ローテーションあり）。
 - アプリの二重起動防止（名前付きミューテックスなど）。
+
+### Phase 6 の実施メモ（2026-11-09）
+
+#### 透明なアイコン（実機で見つかった問題）
+
+Steam の .url（例: OVR Advanced Settings, `steam://rungameid/1009850`）の `IconFile` が指す .ico には、
+32×32 のフレームが 2 枚ある（32bpp の本物と、色データが 0・マスクがすべて透明の 1bpp の空フレーム）。
+Pillow 11.3 は同じサイズのフレームを 1 枚しか使わず、空フレームを選ぶため、48×48 の完全に透明な WebP が保存されていた。
+
+- `icons.py`: ICO（.ico と exe から取り出したもの）は全フレームを「大きいサイズ → 色深度が高い」の順に試し、
+  透明でない最初のフレームを使う。すべて（またはほぼすべて: alpha ≥ 16 の画素が 1% 未満）透明なら失敗として `""` を返し、
+  次の候補 → プレースホルダーの順に進む。
+- `api.get_config`: 保存済みの透明なアイコンは、UI に返すときだけ `""` にする（保存データは書き換えない）。
+- `.url` の `IconIndex` を読むようにした（exe/dll を指しているとき用）。
+
+#### ドロップのパス検証（pywebview を更新する人へ）
+
+**問題:** pywebview 6.1 では、フルパスは Python 側の DOM ハンドラーに渡る event の `files[i]['pywebviewFullPath']` でしか受け取れない。
+`webview/util.py` は、ネイティブ側の記録とファイル名が一致したときだけ値を上書きし、一致しなければ JS から来た値を残す。
+JS から次を呼ぶと、任意のパスをハンドラーに届けられる（2026-11-09 に WebView2 の実機で確認）。
+
+```js
+pywebview._jsApiCallback('pywebviewEventHandler',
+  {event: {type: 'drop', dataTransfer: {files: [{name: 'x.exe', pywebviewFullPath: 'C:\\any\\x.exe'}]}},
+   nodeId: 'document'}, 'eventHandler')
+```
+
+なお、作り物の `DragEvent` を `dispatchEvent` しても届かない。JS で作った `File` は、WebView2 が
+`postMessageWithAdditionalObjects` で拒否する（"additional File object is not a file on the disk"）。
+
+**対策（`src/core/drop_guard.py`）:** `webview.dom._dnd_state['paths']`（WebView2 のネイティブメッセージ `FilesDropped` からしか追加されない）を、
+追加を記録するリストに差し替える。記録にあるパスだけを信頼する。記録は最後の 1 回のドロップ分だけを持ち、使ったら消し、30 秒で期限切れにする。
+`add_shortcut` は、select_file で選んだパスか、照合できたドロップのパスしか受け付けない（Phase 2 の検証もすべて通す）。
+
+**安全側に倒す:** pywebview が 6.1 以外、内部構造が違う、差し替えに失敗した — のどれかなら `DropGuard.enabled = False` になる。
+その場合、drop ハンドラーは登録せず、ドロップでの追加は無効になる（ログに出る）。`requirements.txt` で `pywebview==6.1` に固定している。
+
+**この仕組みを外してよい条件:** 新しい pywebview で次のどちらかをソースで確認し、`tests/test_drop_guard.py` の偽装テスト（方法 A）が新しい仕組みでも通ることを確かめる。
+- JS から送られた `pywebviewFullPath` を必ず消す（または上書きする）ようになった。
+- ネイティブ側で取得したパスを、JS を経由せずに受け取る公開 API ができた。
+
+それまでは、pywebview を更新するとき、`drop_guard.EXPECTED_PYWEBVIEW_VERSION` と `requirements.txt` を一緒に更新する。
+その前に、新しいバージョンの `util.py`（pywebviewEventHandler）と `platforms/edgechromium.py`（FilesDropped）が同じ仕組みのままであることを確認する。
+
+#### ドロップしても追加されない問題（実機確認 2026-11-09）
+
+**症状:** ログに「ネイティブの記録（FilesDropped）を受け取りました」だけが出て、何も追加されず、エラー表示も出なかった。
+
+**原因（推定）:** pywebview の JS は、ドロップのたびに `FilesDropped`（`postMessageWithAdditionalObjects`）と DOM イベント（`postMessage`）を続けて送る。File を受け渡す前者の方が後に届くことがある。
+その場合、pywebview はファイル名で照合できず、`pywebviewFullPath` が付かない。当時の `consume()` は記録が無いと**ログも出さずに**空を返し、JS にも知らせていなかった。
+上の症状はこの順番とすべて一致するが、確定には実機のログ（下記）が必要。
+
+**対策:**
+- `DropGuard.consume()` は、記録が無ければ最大 2 秒（`NATIVE_WAIT_SECONDS`）待ち、届いた記録とファイル名で照合する。受け付けるパスは常に記録（ネイティブ側）の値。待っても届かなければ拒否する。
+- 拒否したときは理由をログと UI の両方に出す。Python 側から 5 秒応答が無いときも、JS 側で理由を表示する。
+- ドロップ先はカテゴリー全体（見出しを含む）にした。カテゴリーの外なら「カテゴリーの上にドロップしてください」と表示する。
+
+**ログの見方（`%LOCALAPPDATA%\PaletteLaunch\logs\palettelaunch.log`）:** ドロップの流れの各段階に `[drop n/5]` を付けている。
+
+| 段階 | ログ | 出るところ |
+|---|---|---|
+| 1 | `[drop 1/5] ネイティブの記録（FilesDropped）を受け取りました: n 件` | `drop_guard._record_native` |
+| 2 | `[drop 2/5] DOM の drop ハンドラーが呼ばれました: n 件 …（pywebviewFullPath あり k 件）` | `API._handle_drop` |
+| 3 | `[drop 3/5] ネイティブの記録がまだ無いため、最大 2.0 秒待ちます`（逆順のときだけ）、`[drop 3/5] 照合の結果: …`、拒否したときは理由の WARNING | `DropGuard.consume` |
+| 4 | `[drop 4/5] JS に知らせます: 受け付け n 件、エラー …` | `API._handle_drop` |
+| 5 | `[drop 5/5] JS がドロップの結果を受け取りました: …`、`[drop 5/5] add_shortcut の結果: … -> OK / エラーコード` | `API.add_dropped_shortcuts` |
+
+1 と 2 の順番で、到着順が分かる（2 が先で 3 に「待ちます」が出れば逆順）。
+
+#### 実機での確認が必要なこと
+
+- エクスプローラーから .exe / .lnk / .url / .bat をカテゴリーにドロップして追加できること（.url は WebView2 がファイルとして渡さない可能性がある）。
+- カテゴリーの外にドロップすると、理由が表示されて何も追加されないこと。
+- 二重起動すると、起動済みのウィンドウが前面に出る（出せないときはタスクバーで点滅する）こと。
+
+#### 二重起動で前面に出ない問題（実機確認 2026-11-10）
+
+**症状:** ログに「すでに起動しているため終了します」だけが出て、前面にも出ず点滅もしなかった。
+
+**分かったこと:**
+- `.venv\Scripts\python.exe` は本物の `python.exe` を子プロセスとして起動するランチャーで、ウィンドウを持つのは子プロセス（PID も実行ファイル名も違う）。
+- 以前の実装は、前面化に成功したと判断した場合に何もログに出していなかった。また Windows の制限で、`SetForegroundWindow` が拒否されることがある。この制限は「フォアグラウンドのプロセス、またはそれが起動したプロセス」などにしか前面化を許さないもので、ランチャーの子プロセスは当てはまらない。
+
+**対策（`src/core/single_instance.py`）:**
+1. 1つ目は、ウィンドウを表示した時点で、PID とウィンドウハンドルを `%LOCALAPPDATA%\PaletteLaunch\instance.json` に記録する（終了時に消す）。
+2. 2つ目は記録を読み（1つ目がまだ起動中なら最大 5 秒待つ）、そのウィンドウが存在し、記録の PID のもので、タイトルが `PaletteLaunch` であることを確かめる。どれかが違えば何もしない。
+3. 2つ目は `AllowSetForegroundWindow(PID)` で権限を渡し、名前付きイベントで1つ目に前面化を依頼する。1つ目は pywebview の API で復元・前面化する（下記）。
+4. 2つ目は 1.5 秒以内に前面に出たか確かめ、出なければ自分でも `SetForegroundWindow` を試し（ウィンドウの状態は変えない）、だめならタスクバーで点滅させる。
+5. どの段階の結果も `[instance]` のログに出す。
+
+開発環境で確認した結果: 2つ目の `AllowSetForegroundWindow` は権限が無く失敗した（エラー 5）。それでも1つ目は前面に出た。
+
+#### 前面に出たウィンドウの中身が描画されない問題（実機確認 2026-11-10）
+
+**症状:** 最小化していた1つ目が前面に出たが、中身が描画されず、テーマの背景色だけの空のウィンドウになった（大きさを変えると戻った）。
+
+**原因（再現して確認）:** 1つ目の待ち受けスレッド（UI スレッドではない）から、Win32 の `ShowWindow` で直接「最小化 → 復元」していた。
+- WinForms の `WindowState` は `Normal` に戻り、WebView2 のコントロールの大きさも元に戻っていた（WinForms は復元に気づいている）。
+- 同じ `ShowWindow(SW_RESTORE)` でも、pywebview の UI スレッド上で呼ぶと描画された。WebView2 のコントローラーは UI スレッドで操作する前提のため、UI スレッド以外からの復元では描画が再開されないと考えられる。
+
+**対策:** 復元と前面化は pywebview の API だけで行う（`window.restore()` / `window.maximize()` / `window.minimize()` / `window.show()`。どれも UI スレッドで WinForms の `WindowState` / `Show` / `Activate` を変える）。
+- 最小化していれば、`GetWindowPlacement` の `WPF_RESTORETOMAXIMIZED` を見て、最大化から最小化したなら `maximize()`、そうでなければ `restore()` する。その後 `show()` する。
+- それでも前面に出ない（前面化の権限が無い）ときは、`minimize()` → `restore()`（最大化していたら `maximize()`）→ `show()` を行う。
+- Win32 は状態を調べる（`IsIconic` / `IsZoomed` / `GetWindowPlacement` / `GetForegroundWindow`）ためだけに使う。`ShowWindow` は使わない（`tests/test_single_instance.py` で確認）。
+
+**確認（開発環境、実際の UI で自動確認）:** 背景色以外の画素の割合を測った。通常の大きさで 0.203、最大化で 0.117 なら中身が描画されている。
+
+| 1つ目の状態 | 結果 |
+|---|---|
+| 最小化 | 前面に出て描画された（0.203）。使った方法は `show` |
+| 最大化してから最小化 | 最大化に戻り、描画された（0.117）。使った方法は `show` |
+| 他のウィンドウの後ろ | 前面に出て描画された（0.203）。使った方法は `minimize-restore` |
+
+手動の確認手順は `docs/build.md` の「4-4. 二重起動の確認」にある。
 
 ---
 
