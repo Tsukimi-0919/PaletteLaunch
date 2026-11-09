@@ -3,50 +3,14 @@
 Windows 専用モジュール（win32com, os.startfile）と subprocess はすべてモックする。
 ファイルの存在チェックや .url の読み込みは tmp_path 上の実ファイルで確認する。
 """
-import importlib
-import sys
+import subprocess
 from unittest import mock
 
 import pytest
 
+from tests.helpers import make_file, make_url_file
 
-@pytest.fixture
-def launcher(monkeypatch):
-    """win32com をモックに差し替えた状態で launcher モジュールを読み込む"""
-    win32com = mock.MagicMock()
-    monkeypatch.setitem(sys.modules, "win32com", win32com)
-    monkeypatch.setitem(sys.modules, "win32com.client", win32com.client)
-    monkeypatch.delitem(sys.modules, "src.core.launcher", raising=False)
-    module = importlib.import_module("src.core.launcher")
-    yield module
-    sys.modules.pop("src.core.launcher", None)
-
-
-@pytest.fixture
-def startfile(launcher, monkeypatch):
-    """os.startfile のモック（非 Windows 環境でも動くよう raising=False）"""
-    m = mock.MagicMock()
-    monkeypatch.setattr(launcher.os, "startfile", m, raising=False)
-    return m
-
-
-@pytest.fixture
-def popen(launcher, monkeypatch):
-    """subprocess.Popen のモック"""
-    m = mock.MagicMock()
-    monkeypatch.setattr(launcher.subprocess, "Popen", m)
-    return m
-
-
-def make_file(tmp_path, name, content="", encoding="utf-8"):
-    p = tmp_path / name
-    p.write_text(content, encoding=encoding)
-    return str(p)
-
-
-def make_url_file(tmp_path, url, name="game.url", encoding="utf-8"):
-    return make_file(tmp_path, name,
-                     f"[InternetShortcut]\nURL={url}\n", encoding=encoding)
+UNC_EXE = "\\\\server\\share\\a.exe"
 
 
 # --- URL スキーム -------------------------------------------------------------
@@ -98,7 +62,8 @@ def test_drive_letter_is_not_url(launcher, startfile, popen, tmp_path):
 def test_exe_uses_popen_with_list(launcher, startfile, popen, tmp_path, name):
     path = make_file(tmp_path, name)
     assert launcher.launch_app(path) is True
-    popen.assert_called_once_with([path], cwd=str(tmp_path))
+    popen.assert_called_once_with([path], cwd=str(tmp_path),
+                                  creationflags=subprocess.CREATE_NEW_CONSOLE)
     startfile.assert_not_called()
 
 
@@ -259,3 +224,125 @@ def test_resolve_shortcut_url(launcher, tmp_path):
 def test_resolve_shortcut_broken_url_returns_path(launcher, tmp_path):
     path = make_file(tmp_path, "bad.url", "garbage")
     assert launcher.resolve_shortcut(path) == path
+
+
+# --- .lnk のリンク先チェック（Phase 2 追加項目） --------------------------------
+
+def test_lnk_with_missing_target_is_rejected(launcher, win32_mocks, startfile, popen,
+                                             tmp_path, caplog):
+    """リンク先が存在しない .lnk は startfile を呼ばない（「ショートカットの検索」を出さない）"""
+    path = make_file(tmp_path, "moved.lnk")
+    missing = str(tmp_path / "gone" / "game.exe")
+    win32_mocks.shortcut.TargetPath = missing
+    with caplog.at_level("WARNING"):
+        assert launcher.launch_app(path) is False
+    startfile.assert_not_called()
+    popen.assert_not_called()
+    assert missing in caplog.text
+
+
+def test_lnk_with_existing_target_opens(launcher, win32_mocks, startfile, tmp_path):
+    path = make_file(tmp_path, "ok.lnk")
+    win32_mocks.shortcut.TargetPath = make_file(tmp_path, "game.exe")
+    assert launcher.launch_app(path) is True
+    startfile.assert_called_once_with(path)
+
+
+@pytest.mark.parametrize("target", [
+    "",                       # シェルフォルダ・MSI アドバタイズ等
+    "game.exe",               # 相対パス
+    UNC_EXE,                  # UNC は存在チェックしない（SMB 接続させない）
+])
+def test_lnk_with_special_target_is_left_to_startfile(launcher, win32_mocks, startfile,
+                                                      tmp_path, monkeypatch, target):
+    path = make_file(tmp_path, "special.lnk")
+    win32_mocks.shortcut.TargetPath = target
+    exists = mock.MagicMock(return_value=False)
+    monkeypatch.setattr(launcher.os.path, "exists", exists)
+    assert launcher.launch_app(path) is True
+    startfile.assert_called_once_with(path)
+    exists.assert_not_called()
+
+
+def test_lnk_unreadable_is_left_to_startfile(launcher, win32_mocks, startfile, tmp_path):
+    path = make_file(tmp_path, "weird.lnk")
+    win32_mocks.win32com.client.Dispatch.side_effect = RuntimeError("COM error")
+    assert launcher.launch_app(path) is True
+    startfile.assert_called_once_with(path)
+
+
+# --- get_lnk_info / COM の初期化 ----------------------------------------------
+
+def test_get_lnk_info_returns_target_and_icon(launcher, win32_mocks):
+    win32_mocks.shortcut.TargetPath = r"C:\Games\game.exe"
+    win32_mocks.shortcut.IconLocation = r"C:\Games\game.exe,1"
+    assert launcher.get_lnk_info(r"C:\x.lnk") == {
+        "target": r"C:\Games\game.exe", "icon_location": r"C:\Games\game.exe,1"}
+    win32_mocks.pythoncom.CoInitialize.assert_called_once()
+    win32_mocks.pythoncom.CoUninitialize.assert_called_once()
+
+
+def test_get_lnk_info_uninitializes_on_error(launcher, win32_mocks):
+    """COM の例外時も CoInitialize / CoUninitialize が対になる"""
+    win32_mocks.win32com.client.Dispatch.side_effect = RuntimeError("COM error")
+    assert launcher.get_lnk_info(r"C:\x.lnk") is None
+    win32_mocks.pythoncom.CoInitialize.assert_called_once()
+    win32_mocks.pythoncom.CoUninitialize.assert_called_once()
+
+
+def test_get_lnk_info_skips_uninitialize_if_initialize_fails(launcher, win32_mocks):
+    win32_mocks.pythoncom.CoInitialize.side_effect = RuntimeError("init failed")
+    with pytest.raises(RuntimeError):
+        launcher.get_lnk_info(r"C:\x.lnk")
+    win32_mocks.pythoncom.CoUninitialize.assert_not_called()
+
+
+def test_resolve_shortcut_lnk(launcher, win32_mocks):
+    win32_mocks.shortcut.TargetPath = r"C:\Games\game.exe"
+    assert launcher.resolve_shortcut(r"C:\x.lnk") == r"C:\Games\game.exe"
+
+
+def test_resolve_shortcut_lnk_without_target_returns_path(launcher):
+    assert launcher.resolve_shortcut(r"C:\x.lnk") == r"C:\x.lnk"
+
+
+# --- 判定ヘルパー -------------------------------------------------------------
+
+@pytest.mark.parametrize("value, expected", [
+    (r"C:\Games\game.exe,0", (r"C:\Games\game.exe", 0)),
+    (r"C:\Games\game.exe,3", (r"C:\Games\game.exe", 3)),
+    (r"C:\Windows\System32\shell32.dll,-16769", (r"C:\Windows\System32\shell32.dll", -16769)),
+    (r'"C:\Games\game.exe",2', (r"C:\Games\game.exe", 2)),
+    (r"C:\Games\icon.ico", (r"C:\Games\icon.ico", 0)),
+    (",0", None),
+    ("", None),
+    (None, None),
+])
+def test_parse_icon_location(launcher, value, expected):
+    assert launcher.parse_icon_location(value) == expected
+
+
+def test_parse_icon_location_expands_env(launcher, monkeypatch):
+    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    assert launcher.parse_icon_location(r"%SystemRoot%\System32\shell32.dll,4") == (
+        r"C:\Windows\System32\shell32.dll", 4)
+
+
+@pytest.mark.parametrize("path, expected", [
+    (UNC_EXE, True),
+    ("//server/share/a.exe", True),
+    ("\\\\?\\C:\\a.exe", True),
+    (r"C:\a.exe", False),
+    ("", False),
+    (None, False),
+])
+def test_is_unc_path(launcher, path, expected):
+    assert launcher.is_unc_path(path) is expected
+
+
+def test_is_missing_drive_target(launcher, tmp_path):
+    assert launcher.is_missing_drive_target(str(tmp_path / "nope.exe")) is True
+    assert launcher.is_missing_drive_target(make_file(tmp_path, "a.exe")) is False
+    assert launcher.is_missing_drive_target("") is False
+    assert launcher.is_missing_drive_target("relative.exe") is False
+    assert launcher.is_missing_drive_target(UNC_EXE) is False

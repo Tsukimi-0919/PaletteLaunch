@@ -9,12 +9,16 @@ from icoextract import IconExtractor
 from PIL import Image
 
 
-def get_icon_base64(path):
+def get_icon_base64(path, index=0):
     """
     指定されたパス(EXE, LNK, URL, ICO等)からアイコンを取得し、
     48x48のWebP形式でBase64エンコードして返す。
+    index は EXE/DLL 内のアイコン番号（IconLocation の ",0" など）。
     """
-    if not path or not os.path.exists(path):
+    # UNC パスは存在チェックだけで SMB 接続が発生する（NTLM ハッシュ漏えい対策）
+    if not path or path.startswith(("\\\\", "//")):
+        return ""
+    if not os.path.exists(path):
         return ""
 
     try:
@@ -28,7 +32,11 @@ def get_icon_base64(path):
         # 2. 実行ファイル (.exe) 等の場合
         else:
             extractor = IconExtractor(path)
-            icon_bytes_io = extractor.get_icon()
+            # 負のインデックスはリソース ID 指定（例: ",-101" → ID 101）
+            if index < 0:
+                icon_bytes_io = extractor.get_icon(resource_id=-index)
+            else:
+                icon_bytes_io = extractor.get_icon(num=index)
             img = Image.open(icon_bytes_io)
 
         if img:

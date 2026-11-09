@@ -143,7 +143,12 @@ async function addShortcut(categoryId) {
         const name = prompt(i18n.prompt_confirm_app_name, filename);
 
         if (name) {
-            await pywebview.api.add_shortcut(categoryId, name, path);
+            const result = await pywebview.api.add_shortcut(categoryId, name, path);
+            if (result && result.ok === false) {
+                // メッセージは alert で表示する（innerHTML には入れない）
+                const code = String(result.error || "");
+                alert(i18n["error_" + code] || i18n.error_add_shortcut || code);
+            }
             renderApp();
         }
     }
