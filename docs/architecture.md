@@ -35,5 +35,6 @@
 * **操作部品の大きさ（`--control-*` / `--action-*`）**: ヘッダーの選択欄・「＋カテゴリー」と、カテゴリー見出しのボタンの高さ・幅・余白・文字サイズ・角丸は `style.css` の変数だけで決める。テーマ CSS には色・枠・フォントの種類・装飾だけを書き、大きさを変えたいときはテーマの `:root` で変数を上書きする（`tests/test_ui_static.py` で検査）。
 * **ドラッグ＆ドロップのパス検証（`src/core/drop_guard.py`）**: pywebview 6.1 では、ドロップしたファイルのフルパス（`pywebviewFullPath`）を JS から偽装できる。そのため、pywebview の内部データ `webview.dom._dnd_state['paths']` を記録用のリストに差し替え、WebView2 のネイティブ側から来たパスだけを信頼している。この仕組みが使えないとき（バージョン違いなど）は、ドロップでの追加を無効にする。pywebview を更新するときは `docs/security-fix-plan.md` の Phase 6「ドロップのパス検証」を読むこと。
 * **ログ**: `%LOCALAPPDATA%\PaletteLaunch\logs\palettelaunch.log`（1MB × 3世代）。アイコンの base64 や設定ファイルの中身全体はログに出さない。
-* **二重起動の防止**: ユーザーごとの名前付きミューテックス（`Local\PaletteLaunch.SingleInstance.<SID>`）。起動済みのウィンドウは、タイトルに加えてプロセスの実行ファイルが自分と同じことを確認してから前面に出す。
+* **二重起動の防止**: ユーザーごとの名前付きミューテックス（`Local\PaletteLaunch.SingleInstance.<SID>`）。1つ目は PID とウィンドウハンドルを `%LOCALAPPDATA%\PaletteLaunch\instance.json` に記録し、名前付きイベント（`Local\PaletteLaunch.Activate.<SID>`）で前面化の依頼を待つ。2つ目は記録のウィンドウが記録の PID のものでタイトルも一致することを確かめてから、`AllowSetForegroundWindow` で権限を渡して依頼する。実行ファイル名では見分けない（.venv の python はランチャーで、ウィンドウを持つのは子プロセスのため）。ログは `[instance]`。
+* **ドラッグ中の強調**: ファイルをドラッグしている間、カーソルの下のカテゴリーに `.drop-target`（`--accent-color` の点線の枠）を付ける。ファイル以外のドラッグ（Sortable の並べ替え）では付けない。
 * **ヘッダーの部品の幅は固定**: テーマや言語を切り替えても位置がずれないように、全テーマのフォント・両言語でいちばん長い表示が収まる幅にしてある。テーマやフォントを足したときは測り直す。

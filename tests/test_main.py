@@ -27,6 +27,18 @@ def started(main_module, monkeypatch):
     m.guard = mock.MagicMock(enabled=True)
     m.create_window = mock.MagicMock()
     m.start = mock.MagicMock()
+    m.host = mock.MagicMock()
+    m.shown = []
+
+    class Shown:
+        def __iadd__(self, func):
+            m.shown.append(func)
+            return self
+
+    window = mock.MagicMock()
+    window.events.shown = Shown()
+    m.create_window.return_value = window
+    monkeypatch.setattr(main_module.single_instance, "InstanceHost", lambda: m.host)
     monkeypatch.setattr(main_module, "setup_logging", m.setup_logging)
     monkeypatch.setattr(main_module.single_instance, "acquire", m.acquire)
     monkeypatch.setattr(main_module.single_instance, "activate_existing", m.activate)
@@ -49,6 +61,16 @@ def test_main_passes_absolute_paths(main_module, started):
     assert started.api_cls.call_args.kwargs["drop_guard"] is started.guard
     started.guard.install.assert_called_once_with()
     started.start.assert_called_once()
+    # 表示されたら PID とウィンドウを記録し、終了時に記録を消す
+    assert started.shown == [started.host.publish]
+    started.host.close.assert_called_once_with()
+
+
+def test_record_removed_even_if_start_fails(main_module, started):
+    started.start.side_effect = RuntimeError("webview failed")
+    with pytest.raises(RuntimeError):
+        main_module.main()
+    started.host.close.assert_called_once_with()
 
 
 def test_second_instance_does_not_start(main_module, started):

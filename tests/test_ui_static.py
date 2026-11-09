@@ -249,3 +249,26 @@ def test_drop_flow_always_reports(script_code):
     assert re.search(r"setTimeout\([\s\S]{0,200}error_drop_no_response", script_code)
     # 並べ替え（ファイル以外のドラッグ）は対象外
     assert "types.includes('Files')" in script_code
+
+
+# --- Phase 6: ドラッグ中のドロップ先の強調 -----------------------------------------
+
+def test_drop_target_style_uses_theme_color():
+    rules = dict(css_rules(STYLE_CSS))
+    decls = dict(rules[".category-section.drop-target"])
+    assert "var(--accent-color)" in decls["outline"]
+    # 大きさ・配置を変えるプロパティは使わない（テーマのレイアウトを崩さない）
+    assert not any(SIZE_PROPERTY.match(p) for p in decls)
+
+
+@pytest.mark.parametrize("theme", THEME_FILES, ids=lambda p: p.stem)
+def test_every_theme_defines_accent_color(theme):
+    assert re.search(r"--accent-color\s*:", theme.read_text(encoding="utf-8"))
+
+
+def test_drop_highlight_is_cleared(script_code):
+    assert re.search(r"addEventListener\('dragleave'[\s\S]{0,120}setDropHighlight\(null\)", script_code)
+    assert re.search(r"addEventListener\('drop'[\s\S]{0,80}setDropHighlight\(null\)", script_code)
+    assert re.search(r"addEventListener\('dragend'[\s\S]{0,60}setDropHighlight\(null\)", script_code)
+    # ファイルのドラッグのときだけ強調する（Sortable の並べ替えでは強調しない）
+    assert re.search(r"if \(isFileDrag\(e\)\) setDropHighlight\(", script_code)

@@ -95,8 +95,15 @@ def main():
     api._attach_window(window)  # pylint: disable=protected-access
     register_drop_handler(window, api, drop_guard)
 
-    webview.start(debug=False)
-    del mutex
+    # 二重起動のとき、2つ目がこのウィンドウを前面に出せるように PID とウィンドウを記録する
+    host = single_instance.InstanceHost()
+    window.events.shown += host.publish
+
+    try:
+        webview.start(debug=False)
+    finally:
+        host.close()
+        del mutex
 
 
 if __name__ == '__main__':

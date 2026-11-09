@@ -401,9 +401,15 @@ header h1 {
     opacity: 1;
 }
 
-.shortcut-grid.drag-over {
-    background: rgba(128, 128, 128, 0.1);
-    border: 2px dashed var(--accent-color);
+/* ファイルをドラッグしている間の、ドロップ先のカテゴリー（script.js が付け外しする）。
+   色は全テーマで定義されている --accent-color を使う。
+   outline は大きさ・配置に影響しないので、テーマの見た目（レイアウト）を崩さない */
+.category-section.drop-target {
+    outline: 2px dashed var(--accent-color);
+    outline-offset: 6px;
+    border-radius: 6px;
+    background: rgba(128, 128, 128, 0.12);
+    background: color-mix(in srgb, var(--accent-color) 14%, transparent);
 }
 
 /* 編集・削除ボタン */

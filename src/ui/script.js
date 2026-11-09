@@ -97,9 +97,19 @@ function bindStaticHandlers() {
     // ページ全体でファイルのドロップを受け付ける（drop イベントを発生させるため）。
     // カテゴリーの上なら、そのカテゴリーに追加する（createCategoryElement で categoryId を入れる）。
     // カテゴリーの外なら categoryId: null のまま、Python 側で「ドロップ先が分からない」になる。
-    document.addEventListener('dragover', (e) => e.preventDefault());
+    // ファイルをドラッグしている間は、カーソルの下のカテゴリーを強調する（並べ替えでは強調しない）。
+    document.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (isFileDrag(e)) setDropHighlight(sectionAt(e.target));
+    });
+    // ウィンドウの外に出た（relatedTarget が無い）・キャンセルした（Esc でも dragleave が来る）
+    document.addEventListener('dragleave', (e) => {
+        if (!e.relatedTarget) setDropHighlight(null);
+    });
+    document.addEventListener('dragend', () => setDropHighlight(null));
     document.addEventListener('drop', (e) => {
         e.preventDefault();
+        setDropHighlight(null);
         if (!isFileDrag(e)) return;  // カードの並べ替え（Sortable）は対象外
         const section = e.target.closest ? e.target.closest('.category-section') : null;
         startDrop(section ? sectionCategoryIds.get(section) || null : null);
@@ -140,6 +150,8 @@ function renderApp() {
 }
 
 async function renderAppOnce() {
+    // 描き直すと要素が入れ替わるので、強調も消しておく
+    setDropHighlight(null);
     // テーマを取得
     await initThemeSelector();
     const container = document.getElementById('app-container');
@@ -223,17 +235,10 @@ function createCategoryElement(category) {
 
     catElement.append(header, gridElement);
 
-    // --- ドラッグ＆ドロップイベント ---
-    // ドロップ先はカテゴリー全体（見出しを含む）。ドロップ自体は document の drop で受け取る。
+    // --- ドラッグ＆ドロップ ---
+    // ドロップ先はカテゴリー全体（見出しを含む）。ドラッグ中の強調とドロップは document で扱う。
     // フルパスは Python 側で受け取り、paletteLaunchOnDrop で知らされる（WebView2 には file.path が無い）
     sectionCategoryIds.set(catElement, category.id);
-    catElement.addEventListener('dragover', (e) => {
-        if (isFileDrag(e)) { e.preventDefault(); gridElement.classList.add('drag-over'); }
-    });
-    catElement.addEventListener('dragleave', (e) => {
-        if (!catElement.contains(e.relatedTarget)) gridElement.classList.remove('drag-over');
-    });
-    catElement.addEventListener('drop', () => { gridElement.classList.remove('drag-over'); });
 
     // --- ショートカットの表示処理 ---
     category.shortcuts.forEach(item => {
@@ -402,6 +407,28 @@ function addShortcutErrorMessage(result) {
 // 流れ: document の drop（startDrop）→ Python の drop ハンドラーがネイティブの記録と照合
 // → paletteLaunchOnDrop（onFilesDropped）→ add_dropped_shortcuts。
 // 追加されなかったときは、必ず理由を alert で表示する。
+
+// ドラッグ中の強調。dragover は止まっていても繰り返し届くので、届かなくなったら消す
+// （ウィンドウの外へ出た・キャンセルしたのに dragleave が来ない場合の保険）
+const DROP_HIGHLIGHT_IDLE_MS = 300;
+let dropHighlight = null;
+let dropHighlightTimer = null;
+
+function sectionAt(target) {
+    const section = target && target.closest ? target.closest('.category-section') : null;
+    return section && sectionCategoryIds.has(section) ? section : null;
+}
+
+function setDropHighlight(section) {
+    if (dropHighlight !== section) {
+        if (dropHighlight) dropHighlight.classList.remove('drop-target');
+        dropHighlight = section;
+        if (section) section.classList.add('drop-target');
+    }
+    clearTimeout(dropHighlightTimer);
+    dropHighlightTimer = section
+        ? setTimeout(() => setDropHighlight(null), DROP_HIGHLIGHT_IDLE_MS) : null;
+}
 
 function isFileDrag(e) {
     const types = e.dataTransfer ? Array.from(e.dataTransfer.types || []) : [];
