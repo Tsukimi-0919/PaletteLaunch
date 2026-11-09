@@ -56,6 +56,21 @@ ed09da78b65bd05059e606f82df3a4ffea7daba00ba561f263328f689d5d5ab6  ShipporiMincho
 9efdda041712f2dc77506542831755d6d8b008982c79b6e9860b2d0723971b79  ShipporiMincho-Bold.woff2
 ```
 
+### ライセンス文書（取得元と同一のバイト列。OFL-oswald.txt は元が CRLF）
+
+```
+f2b3029aba64c378bf0963b62945eee15e564fe4330b934c8f2eb058282b5e83  OFL-cinzel.txt
+1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9  OFL-notosansjp.txt
+ab609b0e110d622435ff337cdf233288556e011bbf9bd0550be98846c0630819  OFL-orbitron.txt
+0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652  OFL-oswald.txt
+41fba056279be5f45ff9a99e44b7b53897b42732f5806d8e666e0ab49ac6bd38  OFL-shipporimincho.txt
+86c5e9c9382cdcc5948704fdfe60f2aa164a719746931219a42736ecd9cefbd3  OFL-silkscreen.txt
+4a193c54e911c1e8194d4db657423f2527f54a1239f24cb67ecb09128dc9f065  OFL-teko.txt
+```
+
+このフォルダの中身は `.gitattributes` で改行変換の対象外（`-text`）にしている。
+取得し直したファイルを置くときも、改行を変えずにそのまま置くこと。
+
 ## 予約フォント名（Reserved Font Name）について
 
 - Orbitron（RFN: "Orbitron"）は無加工で同梱している。

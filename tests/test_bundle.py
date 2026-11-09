@@ -35,7 +35,7 @@ def csp_directives():
 def readme_hashes(readme):
     """README.md の「sha256  ファイル名」行を読む"""
     text = readme.read_text(encoding="utf-8")
-    return dict((name, h) for h, name in re.findall(r"^([0-9a-f]{64})\s+(\S+)$", text, flags=re.M))
+    return dict((name, h) for h, name in re.findall(r"^([0-9a-f]{64})\s+(\S+)\s*$", text, flags=re.M))
 
 
 def sha256(path):
@@ -103,11 +103,46 @@ def test_vendor_files_match_readme():
 
 
 def test_font_files_match_readme():
+    """フォントとライセンス文書が、記録した SHA-256（取得元と同じバイト列）と一致すること"""
     hashes = readme_hashes(FONTS / "README.md")
-    bundled = {p.name for p in FONTS.iterdir() if p.suffix in (".ttf", ".woff2")}
-    assert bundled <= set(hashes)
+    bundled = {p.name for p in FONTS.iterdir()
+               if p.suffix in (".ttf", ".woff2") or p.name.startswith("OFL-")}
+    # README には変換前の元ファイルのハッシュも載っているため、包含関係で確認する
+    assert bundled <= set(hashes), bundled - set(hashes)
     for name in bundled:
         assert sha256(FONTS / name) == hashes[name], name
+
+
+def _git_check_attr(*paths):
+    import shutil
+    import subprocess
+    if shutil.which("git") is None or not (ROOT / ".git").exists():
+        pytest.skip("git リポジトリではない")
+    out = subprocess.run(["git", "check-attr", "text", "binary", "eol", "--", *paths],
+                         cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    attrs = {}
+    for line in out.splitlines():
+        path, attr, value = line.rsplit(": ", 2)
+        attrs.setdefault(path, {})[attr] = value
+    return attrs
+
+
+def test_gitattributes_keeps_bundled_files_unconverted():
+    """core.autocrlf があっても同梱物の改行が変換されないこと（ハッシュ検証が壊れないように）"""
+    paths = ["src/ui/vendor/Sortable.min.js", "src/ui/vendor/Sortable.LICENSE",
+             "src/ui/fonts/fonts.css", "src/ui/fonts/OFL-oswald.txt",
+             "src/ui/fonts/NotoSansJP-Variable.woff2", "src/ui/fonts/Orbitron-Variable.ttf"]
+    attrs = _git_check_attr(*paths)
+    for p in paths:
+        assert attrs[p]["text"] == "unset", p
+
+
+def test_gitattributes_binary_and_text_rules():
+    attrs = _git_check_attr("icon.ico", "build.ps1", "src/api.py", "src/ui/script.js")
+    assert attrs["icon.ico"]["binary"] == "set"
+    assert attrs["icon.ico"]["text"] == "unset"
+    for p in ("build.ps1", "src/api.py", "src/ui/script.js"):
+        assert attrs[p]["eol"] == "crlf", p
 
 
 def test_fonts_css_references_existing_files():

@@ -1,0 +1,34 @@
+# 改行コードの扱い（core.autocrlf の設定に関係なく、同じ結果になるようにする）
+#
+# - テキストファイル: リポジトリ内は LF、作業フォルダでは CRLF（Windows 専用アプリのため）
+# - 同梱物（src/ui/vendor, src/ui/fonts）: 改行を変換しない。
+#   取得元と同じバイト列のまま保ち、README.md に記録した SHA-256 と一致させるため
+#   （tests/test_bundle.py で検証している）。
+# - バイナリ: 変換も差分表示もしない。
+
+* text=auto eol=crlf
+
+# PowerShell スクリプト（Windows PowerShell 5.1 で動かすため UTF-8 BOM 付き。BOM は git では変わらない）
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 同梱物はバイト列をそのまま保つ
+src/ui/vendor/** -text
+src/ui/fonts/** -text
+
+# バイナリ
+*.ico binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.pyd binary
