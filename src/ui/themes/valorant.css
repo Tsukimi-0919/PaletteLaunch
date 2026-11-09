@@ -1,4 +1,7 @@
 :root {
+    /* 操作部品の大きさ（style.css の変数を上書き） */
+    --control-radius: 0;
+
     --bg-color: #0f1923;
     /* VALORANTダークグレー */
     --accent-color: #ff4655;
@@ -131,7 +134,6 @@ body {
     border: 1px solid var(--text-main) !important;
     text-transform: uppercase;
     font-family: 'Orbitron', sans-serif;
-    padding: 8px 20px;
     cursor: pointer;
 }
 

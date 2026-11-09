@@ -1,4 +1,7 @@
 :root {
+    /* 操作部品の大きさ（style.css の変数を上書き） */
+    --control-radius: 0;
+
     /* メインカラー */
     --bg-color: #0a0a0b;
     /* 深い黒 */

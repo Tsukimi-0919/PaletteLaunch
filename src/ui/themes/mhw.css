@@ -1,4 +1,7 @@
 :root {
+    /* 操作部品の大きさ（style.css の変数を上書き） */
+    --control-radius: 2px;
+
     /* MHWらしい「古龍の書物」配色 */
     --bg-color: #1a140d;
     /* 深いダークブラウン（背景） */
