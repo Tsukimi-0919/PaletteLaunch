@@ -1,7 +1,7 @@
 /* ==========================================================================
    共通レイアウト（骨組み）
    ========================================================================== */
-@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&display=swap');
+/* Oswald は fonts/fonts.css で同梱フォントとして読み込む（外部への @import は CSP で禁止） */
 
 body {
     background-color: var(--bg-color);

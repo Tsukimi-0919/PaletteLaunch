@@ -1,0 +1,129 @@
+/*
+ * 同梱フォント（SIL Open Font License 1.1。ライセンス文書は同じフォルダの OFL-*.txt）
+ * 取得元とハッシュは README.md を参照。
+ *
+ * 以前の Google Fonts の指定と同じウェイトだけを定義する:
+ *   Orbitron 400;900 / Teko 400;700 / Shippori Mincho 400;700 /
+ *   Silkscreen 400;700 / Cinzel 400;900 / Noto Sans JP 400;700 /
+ *   Oswald 500;700（以前は style.css の @import で読み込んでいたもの）
+ * 日本語フォントはショートカット名に任意の漢字が入るため、サブセット化していない。
+ */
+
+/* Orbitron（可変フォント） */
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('Orbitron-Variable.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 900;
+    font-display: swap;
+    src: url('Orbitron-Variable.ttf') format('truetype');
+}
+
+/* Teko（可変フォント） */
+@font-face {
+    font-family: 'Teko';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('Teko-Variable.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Teko';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('Teko-Variable.ttf') format('truetype');
+}
+
+/* Shippori Mincho */
+@font-face {
+    font-family: 'Shippori Mincho';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('ShipporiMincho-Regular.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Shippori Mincho';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('ShipporiMincho-Bold.woff2') format('woff2');
+}
+
+/* Silkscreen */
+@font-face {
+    font-family: 'Silkscreen';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('Silkscreen-Regular.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Silkscreen';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('Silkscreen-Bold.ttf') format('truetype');
+}
+
+/* Cinzel（可変フォント） */
+@font-face {
+    font-family: 'Cinzel';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('Cinzel-Variable.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Cinzel';
+    font-style: normal;
+    font-weight: 900;
+    font-display: swap;
+    src: url('Cinzel-Variable.ttf') format('truetype');
+}
+
+/* Oswald（可変フォント） */
+@font-face {
+    font-family: 'Oswald';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('Oswald-Variable.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Oswald';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('Oswald-Variable.ttf') format('truetype');
+}
+
+/* Noto Sans JP（可変フォント） */
+@font-face {
+    font-family: 'Noto Sans JP';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('NotoSansJP-Variable.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Noto Sans JP';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('NotoSansJP-Variable.woff2') format('woff2');
+}
