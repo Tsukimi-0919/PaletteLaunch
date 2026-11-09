@@ -28,7 +28,8 @@ def test_build_ps1_has_bom_for_windows_powershell():
 def test_build_ps1_zip_name_and_exclusions():
     text = BUILD_PS1.read_text(encoding="utf-8-sig")
     assert '"PaletteLaunch-v$Version-win64.zip"' in text
-    for pattern in ("'settings.json'", "'settings.json.bak'", "'settings.corrupt-*.json'"):
+    for pattern in ("'settings.json'", "'settings.json.bak'", "'settings.*.bak.json'",
+                    "'settings.corrupt-*.json'", "'settings.json.*.tmp'"):
         assert pattern in text
     # zip の検査（必須ファイル・除外ファイル）を行っていること
     assert "zip に含めてはいけないファイルがあります" in text

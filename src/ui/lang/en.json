@@ -24,5 +24,11 @@
     "error_target_not_found": "The shortcut target was not found.",
     "error_url_not_allowed": "This URL cannot be added.",
     "error_invalid_name": "The name is invalid.",
-    "error_category_not_found": "The category was not found."
+    "error_category_not_found": "The category was not found.",
+    "error_read_only": "The settings file is open in read-only mode, so changes cannot be saved.",
+    "error_save_failed": "Could not save the changes.",
+    "notice_read_only": "The settings file (settings.json) could not be read correctly, so the app started in read-only mode. Changes will not be saved.\nFix the settings file or restore it from a backup, then restart the app.",
+    "notice_restored": "The settings file (settings.json) was broken, so it was restored from the previous save (settings.json.bak).",
+    "notice_recreated": "The settings file (settings.json) was empty, so a new one was created.",
+    "notice_corrupt_copy": "The broken file has been kept as {file}."
 }

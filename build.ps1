@@ -41,7 +41,9 @@ $StageRoot = Join-Path $Root 'build\package'
 $StageDir = Join-Path $StageRoot 'PaletteLaunch'
 
 # zip に含めないファイル（利用者の設定とそのバックアップ・退避ファイル）
-$ExcludePatterns = @('settings.json', 'settings.json.bak', 'settings.corrupt-*.json')
+#   settings.YYYYMMDD.bak.json は日ごとのバックアップ、settings.json.*.tmp は保存途中の一時ファイル
+$ExcludePatterns = @('settings.json', 'settings.json.bak', 'settings.*.bak.json',
+                     'settings.corrupt-*.json', 'settings.json.*.tmp')
 
 function Write-Step([string]$Message) {
     Write-Host ''

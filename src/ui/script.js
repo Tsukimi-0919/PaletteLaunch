@@ -44,6 +44,34 @@ async function init() {
     console.log("Pythonとの通信準備完了");
     await renderApp();
     await loadAndApplySettings();
+    await notifyLoadStatus();
+}
+
+// --- 設定ファイルの状態の通知（alert のみ。保存データは innerHTML に入れない） ---
+
+// 起動時に、読み取り専用モード・バックアップからの復元などを知らせる
+async function notifyLoadStatus() {
+    const status = await pywebview.api.get_load_status();
+    if (!status) return;
+    const lines = [];
+    if (status.read_only) lines.push(i18n.notice_read_only);
+    else if (status.restored_from_backup) lines.push(i18n.notice_restored);
+    else if (status.reason === 'empty') lines.push(i18n.notice_recreated);
+    if (lines.length && status.corrupt_copy) {
+        lines.push(String(i18n.notice_corrupt_copy || '').split('{file}').join(String(status.corrupt_copy)));
+    }
+    if (lines.length) alert(lines.join('\n\n'));
+}
+
+// 保存できなかった操作を知らせる（読み取り専用モードか、書き込みの失敗か）
+async function reportSaveFailure() {
+    let status = null;
+    try {
+        status = await pywebview.api.get_load_status();
+    } catch (e) {
+        console.error(e);
+    }
+    alert(status && status.read_only ? i18n.error_read_only : i18n.error_save_failed);
 }
 
 function bindStaticHandlers() {
@@ -56,7 +84,7 @@ function bindStaticHandlers() {
     document.getElementById('card-size-select')
         .addEventListener('change', async (event) => {
             const newSize = normalizeCardSize(event.target.value);
-            await pywebview.api.update_setting('card_size', newSize);
+            if (!(await pywebview.api.update_setting('card_size', newSize))) await reportSaveFailure();
             await loadAndApplySettings();
         });
 }
@@ -260,7 +288,7 @@ async function changeTheme(themeName) {
     // 1. CSS と body のクラスを差し替え
     applyTheme(theme);
     // 2. Python側の設定を更新（ConfigManager経由）
-    await pywebview.api.update_setting("theme", theme);
+    if (!(await pywebview.api.update_setting("theme", theme))) await reportSaveFailure();
 }
 
 async function initThemeSelector() {
@@ -288,7 +316,7 @@ async function initThemeSelector() {
 async function addCategory() {
     const name = prompt(i18n.prompt_category_name);
     if (name) {
-        await pywebview.api.add_category(name);
+        if (!(await pywebview.api.add_category(name))) await reportSaveFailure();
         renderApp(); // 再描画
     }
 }
@@ -317,7 +345,7 @@ async function addShortcut(categoryId) {
 async function removeShortcut(event, id) {
     event.stopPropagation();
     if (confirm(i18n.confirm_delete_shortcut)) {
-        await pywebview.api.delete_shortcut(id);
+        if (!(await pywebview.api.delete_shortcut(id))) await reportSaveFailure();
         renderApp();
     }
 }
@@ -327,7 +355,7 @@ async function renameShortcut(event, id, currentName) {
     event.stopPropagation();
     const newName = prompt(i18n.prompt_new_name, currentName);
     if (newName && newName !== currentName) {
-        await pywebview.api.edit_shortcut(id, newName);
+        if (!(await pywebview.api.edit_shortcut(id, newName))) await reportSaveFailure();
         renderApp();
     }
 }
@@ -335,7 +363,7 @@ async function renameShortcut(event, id, currentName) {
 // カテゴリー削除
 async function removeCategory(id) {
     if (confirm(i18n.confirm_delete_category)) {
-        await pywebview.api.delete_category(id);
+        if (!(await pywebview.api.delete_category(id))) await reportSaveFailure();
         renderApp();
     }
 }
@@ -344,7 +372,7 @@ async function removeCategory(id) {
 async function renameCategory(id, currentName) {
     const newName = prompt(i18n.prompt_edit_category, currentName);
     if (newName && newName !== currentName) {
-        await pywebview.api.edit_category(id, newName);
+        if (!(await pywebview.api.edit_category(id, newName))) await reportSaveFailure();
         renderApp(); // 再描画
     }
 }
@@ -367,7 +395,10 @@ async function syncOrder() {
         });
     });
 
-    await pywebview.api.save_order(categoriesOrder);
+    if (!(await pywebview.api.save_order(categoriesOrder))) {
+        await reportSaveFailure();
+        renderApp(); // 保存されていない並び順を、保存済みの状態に戻す
+    }
 }
 
 // --- 言語 ---------------------------------------------------------------------
@@ -415,7 +446,7 @@ async function changeLanguage(langCode) {
     await loadLanguage(code);
 
     // 2. Python側の settings.json を更新
-    await pywebview.api.update_setting("language", code);
+    if (!(await pywebview.api.update_setting("language", code))) await reportSaveFailure();
 
     // 3. UI全体の再描画（カテゴリー内のボタンなども翻訳するため）
     renderApp();

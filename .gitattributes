@@ -16,6 +16,8 @@
 # 同梱物はバイト列をそのまま保つ
 src/ui/vendor/** -text
 src/ui/fonts/** -text
+# 旧バージョンが保存した settings.json（CRLF のまま、バイト列を比べるテストに使う）
+tests/fixtures/** -text
 
 # バイナリ
 *.ico binary
