@@ -1,6 +1,8 @@
 :root {
     /* 操作部品の大きさ（style.css の変数を上書き） */
     --control-radius: 0;
+    /* Teko は字面が小さいので、ヘッダーの部品だけ文字を大きくする */
+    --control-font-size: 15px;
 
     --bg-color: #1e1e1e;
     --accent-color: #cc3333;
