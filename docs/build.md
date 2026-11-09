@@ -146,6 +146,11 @@ dir $env:TEMP\pl-check\PaletteLaunch\_internal\src\ui\fonts
 - 画面が真っ白: `_internal\src\ui\index.html` があるか確認する。
 - フォントが標準のゴシック体になる: `_internal\src\ui\fonts\` と `fonts.css` があるか確認する。
 - 並べ替えができない: `_internal\src\ui\vendor\Sortable.min.js` があるか確認する。
+- ログは `%LOCALAPPDATA%\PaletteLaunch\logs\palettelaunch.log` に出る（EXE の隣ではない）。
+- 起動しない（すぐ終わる）: すでに起動している PaletteLaunch があると、そのウィンドウを前面に出して終了する。
+  タスクバーや通知領域に残っていないか確認する。
+- ファイルをドロップしても追加されない: ログに「ドロップの検証が無効」と出ていれば、pywebview の
+  バージョンが確認済みのもの（6.1）と違う。`docs/security-fix-plan.md` の Phase 6 を参照。
 - 原因を調べるときは、`main.py` の `webview.start(debug=False)` を一時的に `debug=True` にして
   `python main.py` で起動し、開発者ツールのコンソールに CSP 違反などのエラーが出ていないか確認する
   （`debug=True` のままビルド・配布しないこと）。

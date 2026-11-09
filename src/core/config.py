@@ -55,6 +55,17 @@ def _now():
     return datetime.datetime.now()
 
 
+def _describe(value):
+    """
+    ログ用の値の説明（型と長さだけ）。
+    保存データ（アイコンの base64 など）をそのままログに出さないため、中身は出さない。
+    """
+    try:
+        return f"{type(value).__name__}(len={len(value)})"
+    except TypeError:
+        return type(value).__name__
+
+
 def _fixed_id(*position):
     return str(uuid.uuid5(_ID_NAMESPACE, "/".join(str(p) for p in position)))
 
@@ -63,7 +74,9 @@ def _fix_id(item, seen, *position):
     item_id = item.get("id")
     if not isinstance(item_id, str) or not item_id or item_id in seen:
         item["id"] = _fixed_id(*position)
-        logger.warning("id を補完しました: %r -> %s", item_id, item["id"])
+        logger.warning("id を補完しました: %s -> %s",
+                       item_id if isinstance(item_id, str) and len(item_id) <= 64
+                       else _describe(item_id), item["id"])
     seen.add(item["id"])
 
 
@@ -86,7 +99,7 @@ def normalize_data(data):
     config = data.get("config")
     if not isinstance(config, dict):
         if "config" in data:
-            logger.warning("config が object ではないため初期値にします: %r", config)
+            logger.warning("config が object ではないため初期値にします: %s", _describe(config))
             config = {}
         else:
             # 古い形式: 最上位にあった設定を config に写す
@@ -103,19 +116,19 @@ def normalize_data(data):
     seen_ids = set()
     for ci, cat in enumerate(categories):
         if not isinstance(cat, dict):
-            logger.warning("カテゴリーではない要素を除外しました: %r", cat)
+            logger.warning("カテゴリーではない要素を除外しました: %s", _describe(cat))
             continue
         _fix_id(cat, seen_ids, ci)
         _fix_name(cat)
         shortcuts = cat.get("shortcuts")
         if not isinstance(shortcuts, list):
             if shortcuts is not None:
-                logger.warning("shortcuts が list ではないため空にします: %r", shortcuts)
+                logger.warning("shortcuts が list ではないため空にします: %s", _describe(shortcuts))
             shortcuts = []
         fixed = []
         for si, sc in enumerate(shortcuts):
             if not isinstance(sc, dict):
-                logger.warning("ショートカットではない要素を除外しました: %r", sc)
+                logger.warning("ショートカットではない要素を除外しました: %s", _describe(sc))
                 continue
             _fix_id(sc, seen_ids, ci, si)
             _fix_name(sc)

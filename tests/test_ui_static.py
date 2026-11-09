@@ -168,3 +168,61 @@ def test_header_controls_and_action_buttons_use_variables():
     # 小サイズでは、カテゴリーの帯（28px）に収まる値に切り替わる
     small = dict(rules[".size-small"])
     assert small["--action-height"] == "var(--action-height-small)"
+
+
+# --- Phase 6: 使い勝手 ---------------------------------------------------------
+
+def test_category_sortable_created_once(script_code):
+    assert len(re.findall(r"new\s+Sortable\s*\(\s*container\b", script_code)) == 1
+    assert re.search(r"if\s*\(\s*!categorySortable\s*\)", script_code)
+    # グリッド用は描き直す前に destroy する
+    assert re.search(r"gridSortables\.forEach\([^)]*\.destroy\(\)", script_code)
+
+
+def test_render_is_serialized(script_code):
+    assert re.search(r"\basync\s+function\s+renderAppOnce\b", script_code)
+    assert re.search(r"\bfunction\s+renderApp\s*\(\s*\)\s*\{\s*if\s*\(\s*renderRunning\s*\)",
+                     script_code)
+    # renderAppOnce を直接呼ぶのは renderApp の中だけ
+    assert len(re.findall(r"\brenderAppOnce\s*\(", script_code)) == 2  # 定義 + 呼び出し1か所
+
+
+def test_launch_cooldown(script_code):
+    assert re.search(r"const\s+LAUNCH_COOLDOWN_MS\s*=\s*1000\b", script_code)
+    assert "launchLockedUntil" in script_code
+
+
+def test_alerts_are_translated(script_code):
+    assert "alert(i18n.error_launch)" in script_code
+    # alert に日本語の固定文字列を渡していない
+    assert re.search(r"alert\(\s*['\"`][^'\"`]*[\u3040-\u30ff\u4e00-\u9fff]", script_code) is None
+
+
+@pytest.mark.parametrize("lang", ["ja", "en"])
+def test_error_launch_key_exists(lang):
+    import json
+    data = json.loads((UI_DIR / "lang" / f"{lang}.json").read_text(encoding="utf-8"))
+    assert data.get("error_launch")
+
+
+def test_drop_does_not_use_file_path(script_code):
+    """WebView2 には file.path が無い。フルパスは Python 側から paletteLaunchOnDrop で届く"""
+    assert "file.path ||" not in script_code
+    assert "window.paletteLaunchOnDrop = onFilesDropped" in script_code
+
+
+def test_initial_does_not_split_surrogate_pairs(script_code):
+    assert "item.name[0]" not in script_code
+    assert "Array.from(item.name)[0]" in script_code
+
+
+def test_script_syntax_with_node():
+    """script.js の構文チェック（node がある環境のみ）"""
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node が見つかりません")
+    result = subprocess.run([node, "--check", str(SCRIPT_JS)], capture_output=True, text=True,
+                            check=False)
+    assert result.returncode == 0, result.stderr

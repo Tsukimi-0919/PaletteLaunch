@@ -17,6 +17,19 @@ let i18n = {}; // 翻訳データを保持する変数
 let availableThemes = []; // get_themes() の結果
 let initialized = false;
 
+// 描画の直列化（実行中に呼ばれたら、終わったあとに1回だけ描き直す）
+let renderRunning = null;
+let renderRequested = false;
+// Sortable のインスタンス（カテゴリー用は1つだけ、グリッド用は描き直すたびに destroy する）
+let categorySortable = null;
+let gridSortables = [];
+// 起動の連打防止（全カード共通）
+const LAUNCH_COOLDOWN_MS = 1000;
+let launchLockedUntil = 0;
+// ドロップ先のカテゴリー（Python 側の通知 paletteLaunchOnDrop と組み合わせる）
+const DROP_TARGET_TTL_MS = 30000;
+let pendingDrop = null;
+
 // --- 入力値の正規化 -----------------------------------------------------------
 
 function normalizeTheme(themeName) {
@@ -75,6 +88,13 @@ async function reportSaveFailure() {
 }
 
 function bindStaticHandlers() {
+    // ページ全体でファイルのドロップを受け付ける（drop イベントを発生させるため）。
+    // カテゴリー外にドロップしたときは pendingDrop を消して、追加しない。
+    document.addEventListener('dragover', (e) => e.preventDefault());
+    document.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (!e.target.closest || !e.target.closest('.shortcut-grid')) pendingDrop = null;
+    });
     document.getElementById('lang-select')
         .addEventListener('change', (event) => changeLanguage(event.target.value));
     document.getElementById('theme-select')
@@ -91,7 +111,26 @@ function bindStaticHandlers() {
 
 // --- 描画 ---------------------------------------------------------------------
 
-async function renderApp() {
+// renderApp は直列化して呼ぶ（同時に2つ走らせない）
+function renderApp() {
+    if (renderRunning) {
+        renderRequested = true;
+        return renderRunning;
+    }
+    renderRunning = (async () => {
+        try {
+            do {
+                renderRequested = false;
+                await renderAppOnce();
+            } while (renderRequested);
+        } finally {
+            renderRunning = null;
+        }
+    })();
+    return renderRunning;
+}
+
+async function renderAppOnce() {
     // テーマを取得
     await initThemeSelector();
     const container = document.getElementById('app-container');
@@ -113,6 +152,9 @@ async function renderApp() {
     // セレクトボックスの値を現在の設定に合わせる
     document.getElementById('lang-select').value = language;
 
+    // 古いグリッドの Sortable を片付けてから作り直す
+    gridSortables.forEach(sortable => sortable.destroy());
+    gridSortables = [];
     container.replaceChildren();
 
     categories.forEach(category => {
@@ -120,12 +162,14 @@ async function renderApp() {
         container.appendChild(catElement);
     });
 
-    // Sortable（カテゴリー用）
-    new Sortable(container, {
-        animation: 150,
-        handle: '.category-header',
-        onEnd: async () => { await syncOrder(); }
-    });
+    // Sortable（カテゴリー用）。container は作り直さないので初回だけ生成する
+    if (!categorySortable) {
+        categorySortable = new Sortable(container, {
+            animation: 150,
+            handle: '.category-header',
+            onEnd: async () => { await syncOrder(); }
+        });
+    }
 
     // テーマの適用
     applyTheme(appConfig.theme);
@@ -173,17 +217,12 @@ function createCategoryElement(category) {
     // --- ドラッグ＆ドロップイベント ---
     gridElement.addEventListener('dragover', (e) => { e.preventDefault(); gridElement.classList.add('drag-over'); });
     gridElement.addEventListener('dragleave', () => { gridElement.classList.remove('drag-over'); });
-    gridElement.addEventListener('drop', async (e) => {
+    gridElement.addEventListener('drop', (e) => {
         e.preventDefault();
         gridElement.classList.remove('drag-over');
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            for (let file of files) {
-                const path = file.path || "";
-                const name = file.name.replace(/\.[^/.]+$/, "");
-                if (path) await pywebview.api.add_shortcut(category.id, name, path);
-            }
-            renderApp();
+        // フルパスは Python 側で受け取り、paletteLaunchOnDrop で知らされる（WebView2 には file.path が無い）
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            pendingDrop = { categoryId: category.id, at: Date.now() };
         }
     });
 
@@ -193,13 +232,13 @@ function createCategoryElement(category) {
     });
 
     // Sortable（ショートカット用）
-    new Sortable(gridElement, {
+    gridSortables.push(new Sortable(gridElement, {
         group: 'shared-shortcuts', // 【重要】これに共通の名前をつけることでカテゴリー間の移動が可能になる
         animation: 150,
         ghostClass: 'sortable-ghost',
         // 他のカテゴリーにドロップされた時も保存を走らせる
         onEnd: async () => { await syncOrder(); }
-    });
+    }));
 
     return catElement;
 }
@@ -214,7 +253,8 @@ function createIconElement(item) {
     const placeholder = document.createElement('div');
     placeholder.className = 'icon-placeholder';
     const initial = document.createElement('span');
-    initial.textContent = (typeof item.name === 'string' && item.name.length > 0) ? item.name[0] : '';
+    // Array.from: 絵文字などのサロゲートペアを半分に割らない
+    initial.textContent = (typeof item.name === 'string' && item.name.length > 0) ? Array.from(item.name)[0] : '';
     placeholder.appendChild(initial);
     return placeholder;
 }
@@ -251,11 +291,17 @@ function createShortcutElement(item) {
 
     itemElement.append(controls, iconContainer, label);
 
-    itemElement.addEventListener('click', async () => {
-        const success = await pywebview.api.launch_executable(item.id);
-        if (!success) alert("アプリの起動に失敗しました。");
-    });
+    itemElement.addEventListener('click', () => launchShortcut(item.id));
     return itemElement;
+}
+
+// 起動。クリックから約1秒は、どのカードのクリックも無視する（二重起動対策）
+async function launchShortcut(id) {
+    const now = Date.now();
+    if (now < launchLockedUntil) return;
+    launchLockedUntil = now + LAUNCH_COOLDOWN_MS;
+    const success = await pywebview.api.launch_executable(id);
+    if (!success) alert(i18n.error_launch);
 }
 
 // --- テーマ -------------------------------------------------------------------
@@ -331,15 +377,40 @@ async function addShortcut(categoryId) {
 
         if (name) {
             const result = await pywebview.api.add_shortcut(categoryId, name, path);
-            if (result && result.ok === false) {
-                // メッセージは alert で表示する（innerHTML には入れない）
-                const code = String(result.error || "");
-                alert(i18n["error_" + code] || i18n.error_add_shortcut || code);
-            }
+            if (result && result.ok === false) alert(addShortcutErrorMessage(result));
             renderApp();
         }
     }
 }
+
+// add_shortcut のエラーコードを表示用の文に変える（alert で表示する。innerHTML には入れない）
+function addShortcutErrorMessage(result) {
+    const code = String(result.error || "");
+    return i18n["error_" + code] || i18n.error_add_shortcut || code;
+}
+
+// ドロップされたファイルを追加する（Python 側の drop ハンドラーから呼ばれる）。
+// files: [{name, path}]。path は Python 側でネイティブの記録と照合済みで、
+// add_shortcut でも改めて検証される。
+async function onFilesDropped(files) {
+    const target = pendingDrop;
+    pendingDrop = null;
+    if (!target || Date.now() - target.at > DROP_TARGET_TTL_MS) return;
+    if (!Array.isArray(files) || files.length === 0) return;
+
+    const messages = [];
+    for (const file of files) {
+        if (!file || typeof file.path !== 'string' || typeof file.name !== 'string') continue;
+        const result = await pywebview.api.add_shortcut(target.categoryId, file.name, file.path);
+        if (result && result.ok === false) {
+            const message = addShortcutErrorMessage(result);
+            if (!messages.includes(message)) messages.push(message);
+        }
+    }
+    if (messages.length) alert(messages.join('\n'));
+    renderApp();
+}
+window.paletteLaunchOnDrop = onFilesDropped;
 
 // ショートカット削除
 async function removeShortcut(event, id) {

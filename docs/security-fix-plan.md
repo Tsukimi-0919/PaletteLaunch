@@ -132,6 +132,55 @@ Claude Code は **1セッション＝1フェーズ** で進めること。
 - `print` を `logging` に置き換え、EXE の隣（または `%LOCALAPPDATA%\PaletteLaunch\`）にログファイルを出力する（ローテーションあり）。
 - アプリの二重起動防止（名前付きミューテックスなど）。
 
+### Phase 6 の実施メモ（2026-11-09）
+
+#### 透明なアイコン（実機で見つかった問題）
+
+Steam の .url（例: OVR Advanced Settings, `steam://rungameid/1009850`）の `IconFile` が指す .ico には、
+32×32 のフレームが 2 枚ある（32bpp の本物と、色データが 0・マスクがすべて透明の 1bpp の空フレーム）。
+Pillow 11.3 は同じサイズのフレームを 1 枚しか使わず、空フレームを選ぶため、48×48 の完全に透明な WebP が保存されていた。
+
+- `icons.py`: ICO（.ico と exe から取り出したもの）は全フレームを「大きいサイズ → 色深度が高い」の順に試し、
+  透明でない最初のフレームを使う。すべて（またはほぼすべて: alpha ≥ 16 の画素が 1% 未満）透明なら失敗として `""` を返し、
+  次の候補 → プレースホルダーの順に進む。
+- `api.get_config`: 保存済みの透明なアイコンは、UI に返すときだけ `""` にする（保存データは書き換えない）。
+- `.url` の `IconIndex` を読むようにした（exe/dll を指しているとき用）。
+
+#### ドロップのパス検証（pywebview を更新する人へ）
+
+**問題:** pywebview 6.1 では、フルパスは Python 側の DOM ハンドラーに渡る event の `files[i]['pywebviewFullPath']` でしか受け取れない。
+`webview/util.py` は、ネイティブ側の記録とファイル名が一致したときだけ値を上書きし、一致しなければ JS から来た値を残す。
+JS から次を呼ぶと、任意のパスをハンドラーに届けられる（2026-11-09 に WebView2 の実機で確認）。
+
+```js
+pywebview._jsApiCallback('pywebviewEventHandler',
+  {event: {type: 'drop', dataTransfer: {files: [{name: 'x.exe', pywebviewFullPath: 'C:\\any\\x.exe'}]}},
+   nodeId: 'document'}, 'eventHandler')
+```
+
+なお、作り物の `DragEvent` を `dispatchEvent` しても届かない。JS で作った `File` は、WebView2 が
+`postMessageWithAdditionalObjects` で拒否する（"additional File object is not a file on the disk"）。
+
+**対策（`src/core/drop_guard.py`）:** `webview.dom._dnd_state['paths']`（WebView2 のネイティブメッセージ `FilesDropped` からしか追加されない）を、
+追加を記録するリストに差し替える。記録にあるパスだけを信頼する。記録は最後の 1 回のドロップ分だけを持ち、使ったら消し、30 秒で期限切れにする。
+`add_shortcut` は、select_file で選んだパスか、照合できたドロップのパスしか受け付けない（Phase 2 の検証もすべて通す）。
+
+**安全側に倒す:** pywebview が 6.1 以外、内部構造が違う、差し替えに失敗した — のどれかなら `DropGuard.enabled = False` になる。
+その場合、drop ハンドラーは登録せず、ドロップでの追加は無効になる（ログに出る）。`requirements.txt` で `pywebview==6.1` に固定している。
+
+**この仕組みを外してよい条件:** 新しい pywebview で次のどちらかをソースで確認し、`tests/test_drop_guard.py` の偽装テスト（方法 A）が新しい仕組みでも通ることを確かめる。
+- JS から送られた `pywebviewFullPath` を必ず消す（または上書きする）ようになった。
+- ネイティブ側で取得したパスを、JS を経由せずに受け取る公開 API ができた。
+
+それまでは、pywebview を更新するとき、`drop_guard.EXPECTED_PYWEBVIEW_VERSION` と `requirements.txt` を一緒に更新する。
+その前に、新しいバージョンの `util.py`（pywebviewEventHandler）と `platforms/edgechromium.py`（FilesDropped）が同じ仕組みのままであることを確認する。
+
+#### 実機での確認が必要なこと
+
+- エクスプローラーから .exe / .lnk / .url / .bat をカテゴリーにドロップして追加できること（.url は WebView2 がファイルとして渡さない可能性がある）。
+- カテゴリーの外にドロップしても何も起きないこと。
+- 二重起動すると、起動済みのウィンドウが前面に出る（出せないときはタスクバーで点滅する）こと。
+
 ---
 
 ## Phase 7: お手入れ

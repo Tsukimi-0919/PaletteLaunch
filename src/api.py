@@ -5,16 +5,19 @@ UIからのリクエストを受け取り、設定管理やアプリ起動を制
 入れ子のオブジェクトも含めてすべて JS から呼べる（pywebview 6.1）。
 内部用の属性・メソッドには必ず "_" を付けること。
 """
+import json
 import logging
 import os
 import re
 import sys
+import threading
+import time
 import uuid
 
 import webview
 
 from src.core.config import ConfigManager, SettingsReadOnlyError
-from src.core.icons import get_icon_base64
+from src.core.icons import get_icon_base64, is_blank_icon_data
 from src.core.launcher import (
     get_lnk_info,
     is_allowed_url,
@@ -32,6 +35,10 @@ ALLOWED_EXTENSIONS = (".exe", ".lnk", ".url", ".bat")
 NAME_MAX_LENGTH = 100
 ALLOWED_LANGUAGES = ("ja", "en")
 ALLOWED_CARD_SIZES = ("small", "medium")
+# ドロップで受け取ったパスを登録に使える時間（秒）
+DROPPED_PATH_TTL_SECONDS = 30.0
+# ドロップを JS に知らせる関数（script.js で定義）
+_JS_DROP_CALLBACK = "paletteLaunchOnDrop"
 
 # 制御文字（C0/C1）と、文字の向きを変える制御文字
 _UNSAFE_CHARS_RE = re.compile(
@@ -44,6 +51,18 @@ def _clean_name(name):
         return None
     cleaned = _UNSAFE_CHARS_RE.sub("", name).strip()[:NAME_MAX_LENGTH].strip()
     return cleaned or None
+
+
+def _brief(value, limit=64):
+    """
+    ログ用: JS から来た値を短くする（長い文字列や大きなデータをそのまま出さない）。
+    data URI（アイコンの base64 など）は中身を一切出さない。
+    """
+    if isinstance(value, str):
+        if "data:" in value[:16].lower() or ";base64," in value.lower():
+            return f"<data URI len={len(value)}>"
+        return value if len(value) <= limit else value[:limit] + f"...(len={len(value)})"
+    return type(value).__name__
 
 
 def _normalize_path(path):
@@ -72,13 +91,77 @@ class API:
     フロントエンド(JavaScript)とバックエンド(Python)を仲介するクラス。
     """
 
-    def __init__(self, settings_path, example_path=None):
-        """settings_path, example_path は絶対パス（main.py で解決する）"""
+    def __init__(self, settings_path, example_path=None, drop_guard=None, clock=time.monotonic):
+        """
+        settings_path, example_path は絶対パス（main.py で解決する）。
+        drop_guard は src.core.drop_guard.DropGuard（無い・無効ならドロップでの追加はできない）。
+        """
         self._settings_path = settings_path
         # 設定ファイルの管理クラスをインスタンス化
         self._config = ConfigManager(self._settings_path, example_path)
         # 最後に select_file で選ばれたパス（正規化済み）。これ以外は登録させない
         self._selected_path = None
+        self._drop_guard = drop_guard
+        self._clock = clock
+        self._window = None
+        self._drop_lock = threading.Lock()
+        # 最後の1回のドロップで受け取ったパス（正規化済み）と受け取った時刻
+        self._dropped_paths = set()
+        self._dropped_at = None
+
+    # --- ドラッグ＆ドロップ（JS からは呼べない） ---------------------------------
+
+    def _attach_window(self, window):
+        self._window = window
+
+    def _handle_drop(self, event):
+        """
+        document の drop イベント（Python 側の DOM ハンドラー）。
+        pywebviewFullPath は JS から偽装できるため、DropGuard でネイティブ側の記録と
+        照合できたパスだけを登録可能なパスとして記録し、JS に知らせる。
+        """
+        guard = self._drop_guard
+        if guard is None or not guard.enabled:
+            logger.warning("ドロップでの追加は無効です（ドロップの検証が有効になっていません）")
+            return
+
+        try:
+            files = event["dataTransfer"]["files"]
+            claimed = [f.get("pywebviewFullPath") for f in files if isinstance(f, dict)]
+        except (KeyError, TypeError, AttributeError):
+            claimed = []
+        accepted = guard.consume(claimed)
+
+        with self._drop_lock:
+            # 記録は最後の1回のドロップ分だけ
+            self._dropped_paths = {_normalize_path(p) for p in accepted}
+            self._dropped_at = self._clock() if accepted else None
+
+        if not accepted or self._window is None:
+            return
+        payload = [{"name": os.path.splitext(os.path.basename(p))[0], "path": p}
+                   for p in accepted]
+        # json.dumps（ensure_ascii）の結果は、そのまま JS のリテラルとして安全に埋め込める
+        self._window.run_js(
+            f"window.{_JS_DROP_CALLBACK} && window.{_JS_DROP_CALLBACK}({json.dumps(payload)});")
+
+    def _is_dropped_path(self, normalized):
+        with self._drop_lock:
+            if self._dropped_at is None:
+                return False
+            if self._clock() - self._dropped_at > DROPPED_PATH_TTL_SECONDS:
+                self._dropped_paths, self._dropped_at = set(), None
+                return False
+            return normalized in self._dropped_paths
+
+    def _forget_used_path(self, normalized):
+        """登録に使ったパスを、選択・ドロップの記録から消す"""
+        if self._selected_path == normalized:
+            self._selected_path = None
+        with self._drop_lock:
+            self._dropped_paths.discard(normalized)
+            if not self._dropped_paths:
+                self._dropped_at = None
 
     def _save(self, save, *args):
         """
@@ -111,18 +194,27 @@ class API:
         elif key == "card_size":
             allowed = ALLOWED_CARD_SIZES
         else:
-            logger.warning("設定更新を拒否: 不明なキー %r", key)
+            logger.warning("設定更新を拒否: 不明なキー %r", _brief(key))
             return False
 
         if not isinstance(value, str) or value not in allowed:
-            logger.warning("設定更新を拒否: %s=%r", key, value)
+            logger.warning("設定更新を拒否: %s=%r", key, _brief(value))
             return False
 
         return self._save(self._config.update_setting, key, value) is None
 
     def get_config(self):
-        """現在の全設定をUIに返す"""
-        return self._config.get_all()
+        """
+        現在の全設定をUIに返す。
+        透明なアイコン（以前の取得処理で保存されたもの）は、表示用に "" にして返す
+        （UI が頭文字のプレースホルダーを出す）。保存データは書き換えない。
+        """
+        data = self._config.get_all()
+        for cat in data.get("categories", []):
+            for item in cat.get("shortcuts", []):
+                if is_blank_icon_data(item.get("icon")):
+                    item["icon"] = ""
+        return data
 
     def add_category(self, name):
         """新しいカテゴリーを追加する"""
@@ -163,7 +255,8 @@ class API:
         if ext not in ALLOWED_EXTENSIONS:
             return "extension_not_allowed", None
 
-        if self._selected_path is None or _normalize_path(path) != self._selected_path:
+        normalized = _normalize_path(path)
+        if normalized != self._selected_path and not self._is_dropped_path(normalized):
             return "path_not_selected", None
 
         if not os.path.isfile(path):
@@ -205,7 +298,12 @@ class API:
                 location = parse_icon_location(
                     config.get('InternetShortcut', 'IconFile'))
                 if location:
-                    candidates.append((location[0], 0))
+                    # 番号は IconIndex（exe/dll を指すとき用。.ico では使わない）
+                    try:
+                        index = int(config.get('InternetShortcut', 'IconIndex', fallback='0'))
+                    except ValueError:
+                        index = 0
+                    candidates.append((location[0], index))
 
         # 2. 解決先（exe 等）、3. 元のファイル
         if target and target != path:
@@ -228,7 +326,7 @@ class API:
 
         error, target = self._validate_new_shortcut(path)
         if error:
-            logger.warning("ショートカット登録を拒否 (%s): %r", error, path)
+            logger.warning("ショートカット登録を拒否 (%s): %r", error, _brief(path, 300))
             return _error(error)
 
         name = _clean_name(name)
@@ -247,7 +345,7 @@ class API:
             target=target if target != path else None))
         if error:
             return _error(error)
-        self._selected_path = None
+        self._forget_used_path(_normalize_path(path))
         return {"ok": True}
 
     def delete_shortcut(self, shortcut_id):
@@ -322,7 +420,8 @@ class API:
         重複した ID・知らない ID は無視する。形がおかしければ保存しない。
         """
         if not _is_valid_order(categories_order):
-            logger.warning("並び順の形が不正なため保存しません: %r", categories_order)
+            logger.warning("並び順の形が不正なため保存しません: %s",
+                           type(categories_order).__name__)
             return False
 
         data = self._config.get_all()
