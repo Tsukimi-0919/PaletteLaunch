@@ -1,24 +1,11 @@
-import os
 import pytest
 from src.core.config import ConfigManager
 
-# テスト用のファイル名
-TEST_CONFIG = "test_settings.json"
-
 
 @pytest.fixture
-def manager():
-    """各テストの前に実行される準備（フィクスチャ）"""
-    # テスト開始時にファイルを削除しておく
-    if os.path.exists(TEST_CONFIG):
-        os.remove(TEST_CONFIG)
-
-    m = ConfigManager(TEST_CONFIG)
-    yield m
-
-    # テスト終了後にファイルを片付ける
-    if os.path.exists(TEST_CONFIG):
-        os.remove(TEST_CONFIG)
+def manager(tmp_path):
+    """一時フォルダ上の settings.json を使う ConfigManager（プロジェクト直下には書かない）"""
+    return ConfigManager(str(tmp_path / "settings.json"))
 
 
 def test_initial_structure(manager):
@@ -47,14 +34,7 @@ def test_update_setting(manager):
 
 def test_edit_category(manager):
     """カテゴリー名の変更ができるか（新機能）"""
-    data = manager.get_all()
-    cat_id = data["categories"][0]["id"]
-
-    # ConfigManagerに直接 edit_category メソッドを実装している場合
-    # もしAPI.py側にしかない場合は、ConfigManager経由のロジックをテストします
-    manager.update_shortcut = None  # ConfigManagerのメソッド名に合わせて調整
-
-    # 今回実装したカテゴリー名の更新
+    # カテゴリー名の更新
     data = manager._get_raw_data()
     data["categories"][0]["name"] = "Updated Name"
     manager.save(data)
@@ -74,7 +54,19 @@ def test_add_and_delete_shortcut(manager):
     assert shortcuts[0]["name"] == "Note"
     assert shortcuts[0]["icon"] == "base64_data"
 
+    assert "target" not in shortcuts[0]
+
     # 削除
     short_id = shortcuts[0]["id"]
     manager.delete_shortcut(short_id)
     assert len(manager.get_all()["categories"][0]["shortcuts"]) == 0
+
+
+def test_add_shortcut_keeps_original_path_and_target(manager):
+    """path には登録したファイルをそのまま、解決先は target に保存する"""
+    cat_id = manager.get_all()["categories"][0]["id"]
+    manager.add_shortcut(cat_id, "Valorant", r"C:\Games\VALORANT.lnk",
+                         icon="", target=r"C:\Riot Games\Riot Client\RiotClientServices.exe")
+    s = manager.get_all()["categories"][0]["shortcuts"][0]
+    assert s["path"] == r"C:\Games\VALORANT.lnk"
+    assert s["target"] == r"C:\Riot Games\Riot Client\RiotClientServices.exe"

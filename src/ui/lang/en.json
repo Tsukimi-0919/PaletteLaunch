@@ -14,5 +14,15 @@
     "prompt_new_name": "Enter new name:",
     "confirm_delete": "Are you sure you want to delete this?",
     "confirm_delete_shortcut": "Are you sure you want to delete this shortcut?",
-    "confirm_delete_category": "Are you sure you want to delete this category? (All shortcuts inside will be removed)"
+    "confirm_delete_category": "Are you sure you want to delete this category? (All shortcuts inside will be removed)",
+    "error_add_shortcut": "Could not add the shortcut.",
+    "error_invalid_path": "The path is invalid.",
+    "error_unc_not_allowed": "Network paths (starting with \\\\) cannot be added.",
+    "error_extension_not_allowed": "Only .exe / .lnk / .url / .bat files can be added.",
+    "error_path_not_selected": "Please select the file again.",
+    "error_file_not_found": "The file was not found.",
+    "error_target_not_found": "The shortcut target was not found.",
+    "error_url_not_allowed": "This URL cannot be added.",
+    "error_invalid_name": "The name is invalid.",
+    "error_category_not_found": "The category was not found."
 }

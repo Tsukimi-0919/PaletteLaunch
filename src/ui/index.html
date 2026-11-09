@@ -3,18 +3,24 @@
 
 <head>
     <meta charset="UTF-8">
+    <!--
+        CSP: 外部への読み込みはすべて禁止し、同梱ファイル（'self'）だけを許可する。
+        style-src のハッシュ: pywebview（webview/js/customize.js）が text_select=False のときに
+        差し込む <style>（body {-webkit-user-select: none; ...}）だけを許可するためのもの。
+        pywebview を更新したら、この CSS が変わっていないか確認すること。
+    -->
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'sha256-RoIvEyQwR8x7XAq0wvZTfMiswRYjOD0c8DenZVf2Kss='; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
     <link rel="stylesheet" href="style.css">
     <link id="theme-link" rel="stylesheet" href="themes/valorant.css">
 
     <title>PALETTE LAUNCH</title>
 
-    <!-- ライブラリ -->
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <!-- ライブラリ（同梱。バージョンと取得元は vendor/README.md） -->
+    <script src="vendor/Sortable.min.js"></script>
 
-    <!-- フォント（1つにまとめました） -->
-    <link
-        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&family=Teko:wght@400;700&family=Shippori+Mincho:wght@400;700&family=Silkscreen:wght@400;700&family=Cinzel:wght@400;900&family=Noto+Sans+JP:wght@400;700&display=swap"
-        rel="stylesheet">
+    <!-- フォント（同梱。ライセンスと取得元は fonts/README.md） -->
+    <link href="fonts/fonts.css" rel="stylesheet">
 </head>
 
 <body>
@@ -23,13 +29,13 @@
             <h1>PALETTE LAUNCH</h1>
             <div class="header-controls">
                 <!-- 言語切り替え -->
-                <select id="lang-select" class="theme-select" onchange="changeLanguage(this.value)">
+                <select id="lang-select" class="theme-select">
                     <option value="ja">日本語</option>
                     <option value="en">English</option>
                 </select>
 
                 <!-- テーマ切り替え -->
-                <select id="theme-select" class="theme-select" onchange="changeTheme(this.value)">
+                <select id="theme-select" class="theme-select">
                     <!-- JSで動的に追加されます -->
                 </select>
 
@@ -40,7 +46,7 @@
                 </select>
 
                 <!-- カテゴリ追加ボタン -->
-                <button class="add-cat-btn" onclick="addCategory()">+ CATEGORY</button>
+                <button class="add-cat-btn">+ CATEGORY</button>
             </div>
         </header>
 

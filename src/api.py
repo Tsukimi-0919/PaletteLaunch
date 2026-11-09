@@ -1,17 +1,57 @@
 """
 UIからのリクエストを受け取り、設定管理やアプリ起動を制御するAPIモジュール。
+
+注意: js_api に渡したオブジェクトは、"_" で始まらない属性・メソッドが
+入れ子のオブジェクトも含めてすべて JS から呼べる（pywebview 6.1）。
+内部用の属性・メソッドには必ず "_" を付けること。
 """
-import configparser
+import logging
 import os
-import uuid
-import webview
-import json
+import re
 import sys
+import uuid
+
+import webview
 
 from src.core.config import ConfigManager
-from src.core.launcher import launch_app
 from src.core.icons import get_icon_base64
-from src.core.launcher import launch_app, resolve_shortcut
+from src.core.launcher import (
+    get_lnk_info,
+    is_allowed_url,
+    is_missing_drive_target,
+    is_unc_path,
+    launch_app,
+    parse_icon_location,
+    read_url_file,
+    read_url_target,
+)
+
+logger = logging.getLogger(__name__)
+
+ALLOWED_EXTENSIONS = (".exe", ".lnk", ".url", ".bat")
+NAME_MAX_LENGTH = 100
+ALLOWED_LANGUAGES = ("ja", "en")
+ALLOWED_CARD_SIZES = ("small", "medium")
+
+# 制御文字（C0/C1）と、文字の向きを変える制御文字
+_UNSAFE_CHARS_RE = re.compile(
+    "[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]")
+
+
+def _clean_name(name):
+    """表示名を正規化する。不正なら None"""
+    if not isinstance(name, str):
+        return None
+    cleaned = _UNSAFE_CHARS_RE.sub("", name).strip()[:NAME_MAX_LENGTH].strip()
+    return cleaned or None
+
+
+def _normalize_path(path):
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _error(code):
+    return {"ok": False, "error": code}
 
 
 class API:
@@ -20,40 +60,46 @@ class API:
     """
 
     def __init__(self, settings_path):
-        self.settings_path = settings_path
-        self.load_settings()
+        self._settings_path = settings_path
         # 設定ファイルの管理クラスをインスタンス化
-        self.config = ConfigManager(self.settings_path)
+        self._config = ConfigManager(self._settings_path)
+        # 最後に select_file で選ばれたパス（正規化済み）。これ以外は登録させない
+        self._selected_path = None
 
     def update_setting(self, key, value):
-        """テーマと言語設定を更新して保存する"""
-        try:
-            self.config.update_setting(key, value)
-            return True
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            print(f"設定更新エラー: {e}")
+        """テーマ・言語・カードサイズを許可リストで検証して保存する"""
+        if key == "theme":
+            allowed = self.get_themes()
+        elif key == "language":
+            allowed = ALLOWED_LANGUAGES
+        elif key == "card_size":
+            allowed = ALLOWED_CARD_SIZES
+        else:
+            logger.warning("設定更新を拒否: 不明なキー %r", key)
             return False
 
-    def load_settings(self):
-        # 今まで 'settings.json' と直接書いていた部分を self.settings_path に変える
-        if os.path.exists(self.settings_path):
-            with open(self.settings_path, 'r', encoding='utf-8') as f:
-                self.settings = json.load(f)
-        else:
-            self.settings = {"theme": "default", "categories": []}
+        if not isinstance(value, str) or value not in allowed:
+            logger.warning("設定更新を拒否: %s=%r", key, value)
+            return False
 
-    def save_settings(self):
-        with open(self.settings_path, 'w', encoding='utf-8') as f:
-            json.dump(self.settings, f, indent=4, ensure_ascii=False)
+        try:
+            self._config.update_setting(key, value)
+            return True
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning("設定更新エラー: %s", e)
+            return False
 
     def get_config(self):
         """現在の全設定をUIに返す"""
-        return self.config.get_all()
+        return self._config.get_all()
 
     def add_category(self, name):
         """新しいカテゴリーを追加する"""
-        data = self.config.get_all()
+        name = _clean_name(name)
+        if name is None:
+            return False
 
+        data = self._config.get_all()
         new_cat = {
             "id": str(uuid.uuid4()),
             "name": name,
@@ -61,76 +107,157 @@ class API:
         }
         data["categories"].append(new_cat)
 
-        self.config.save(data)
+        self._config.save(data)
         return True
 
     def delete_category(self, category_id):
         """カテゴリーを削除する"""
-        data = self.config.get_all()
+        if not isinstance(category_id, str):
+            return False
+        data = self._config.get_all()
         data["categories"] = [
             c for c in data["categories"] if c["id"] != category_id]
-        self.config.save(data)
+        self._config.save(data)
         return True
+
+    def _validate_new_shortcut(self, path):
+        """
+        登録しようとしているパスを検証する。
+        OK なら (None, 解決先) 、NG なら (エラーコード, None) を返す。
+        """
+        if not isinstance(path, str) or not path:
+            return "invalid_path", None
+        # UNC は存在チェックだけで SMB 接続が発生するため最初に弾く
+        if is_unc_path(path):
+            return "unc_not_allowed", None
+
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            return "extension_not_allowed", None
+
+        if self._selected_path is None or _normalize_path(path) != self._selected_path:
+            return "path_not_selected", None
+
+        if not os.path.isfile(path):
+            return "file_not_found", None
+
+        if ext == ".lnk":
+            info = get_lnk_info(path)
+            target = (info or {}).get("target", "")
+            if is_unc_path(target):
+                return "unc_not_allowed", None
+            if is_missing_drive_target(target):
+                return "target_not_found", None
+            return None, target or path
+
+        if ext == ".url":
+            url = read_url_target(path)
+            if not url or not is_allowed_url(url):
+                return "url_not_allowed", None
+            return None, url
+
+        return None, path
+
+    def _get_shortcut_icon(self, path, target):
+        """アイコンを候補の順に試して取得する（UNC は get_icon_base64 側で拒否）"""
+        candidates = []
+        ext = os.path.splitext(path)[1].lower()
+
+        if ext == ".lnk":
+            # 1. ショートカットの IconLocation（インデックス付き）
+            info = get_lnk_info(path)
+            location = parse_icon_location((info or {}).get("icon_location"))
+            if location:
+                candidates.append(location)
+        elif ext == ".url":
+            # 1. .url の IconFile
+            config = read_url_file(path)
+            if config is not None and config.has_option('InternetShortcut', 'IconFile'):
+                # 「,0」などのインデックス指定を外し、環境変数を展開する
+                location = parse_icon_location(
+                    config.get('InternetShortcut', 'IconFile'))
+                if location:
+                    candidates.append((location[0], 0))
+
+        # 2. 解決先（exe 等）、3. 元のファイル
+        if target and target != path:
+            candidates.append((target, 0))
+        candidates.append((path, 0))
+
+        for icon_path, index in candidates:
+            icon_data = get_icon_base64(icon_path, index)
+            if icon_data:
+                return icon_data
+        return ""
 
     def add_shortcut(self, category_id, name, path):
-        """ショートカットを追加"""
-        real_path = resolve_shortcut(path)
-        icon_data = ""
+        """
+        ショートカットを追加する。
+        戻り値: {"ok": True} または {"ok": False, "error": "<エラーコード>"}
+        """
+        if not isinstance(category_id, str):
+            return _error("category_not_found")
 
-        # --- Steam (.url) の場合のアイコン取得強化 ---
-        if path.lower().endswith('.url'):
-            try:
-                config = configparser.ConfigParser()
-                config.read(path, encoding='utf-8')  # 念のためエンコード指定
-                if config.has_option('InternetShortcut', 'IconFile'):
-                    icon_path = config.get('InternetShortcut', 'IconFile')
-                    # 「,0」などのインデックス指定を削除して純粋なパスにする
-                    icon_path = icon_path.split(',')[0].strip()
-                    # IconFileにパスがあればそこから優先的に取る
-                    icon_data = get_icon_base64(icon_path)
-            except Exception as e:
-                print(f"URLアイコン詳細解析失敗: {e}")
+        error, target = self._validate_new_shortcut(path)
+        if error:
+            logger.warning("ショートカット登録を拒否 (%s): %r", error, path)
+            return _error(error)
 
-        # --- 通常のアイコン取得（上記で取れなかった場合） ---
-        if not icon_data:
-            icon_data = get_icon_base64(real_path)
+        name = _clean_name(name)
+        if name is None:
+            return _error("invalid_name")
 
-        # --- それでもダメなら元のファイルから ---
-        if not icon_data:
-            icon_data = get_icon_base64(path)
+        data = self._config.get_all()
+        if not any(c["id"] == category_id for c in data["categories"]):
+            return _error("category_not_found")
 
-        self.config.add_shortcut(category_id, name, real_path, icon=icon_data)
-        return True
+        icon_data = self._get_shortcut_icon(path, target)
+
+        # 起動用には登録したファイルのパスをそのまま、解決先は表示用に target へ保存する
+        self._config.add_shortcut(category_id, name, path, icon=icon_data,
+                                  target=target if target != path else None)
+        self._selected_path = None
+        return {"ok": True}
 
     def delete_shortcut(self, shortcut_id):
         """ショートカットを削除する"""
-        self.config.delete_shortcut(shortcut_id)
+        if not isinstance(shortcut_id, str):
+            return False
+        self._config.delete_shortcut(shortcut_id)
         return True
 
     def edit_shortcut(self, shortcut_id, new_name):
         """IDを指定して名前を書き換える"""
-        data = self.config.get_all()
+        new_name = _clean_name(new_name)
+        if not isinstance(shortcut_id, str) or new_name is None:
+            return False
+        data = self._config.get_all()
         for cat in data["categories"]:
             for item in cat["shortcuts"]:
                 if item["id"] == shortcut_id:
                     item["name"] = new_name
-                    self.config.save(data)
+                    self._config.save(data)
                     return True
         return False
 
     def edit_category(self, category_id, new_name):
         """カテゴリー名を変更する"""
-        data = self.config.get_all()
+        new_name = _clean_name(new_name)
+        if not isinstance(category_id, str) or new_name is None:
+            return False
+        data = self._config.get_all()
         for cat in data["categories"]:
             if cat["id"] == category_id:
                 cat["name"] = new_name
-                self.config.save(data)
+                self._config.save(data)
                 return True
         return False
 
     def launch_executable(self, shortcut_id):
         """ショートカットIDを受け取り、対応するパスのアプリを起動する"""
-        data = self.config.get_all()
+        if not isinstance(shortcut_id, str):
+            return False
+        data = self._config.get_all()
         target_path = None
         for cat in data["categories"]:
             for s in cat["shortcuts"]:
@@ -144,6 +271,10 @@ class API:
         return False
 
     def select_file(self):
+        """ファイル選択ダイアログを開き、選ばれたパスを返す（登録可能なパスとして記録する）"""
+        # キャンセル時に前回の選択が残らないよう、先に消しておく
+        self._selected_path = None
+
         window = webview.active_window()
         # フィルタに *.url を追加
         file_types = ('Game files (*.exe;*.lnk;*.url;*.bat)',
@@ -152,12 +283,13 @@ class API:
             webview.OPEN_DIALOG, allow_multiple=False, file_types=file_types)
 
         if result and len(result) > 0:
+            self._selected_path = _normalize_path(result[0])
             return result[0]  # ここでは解析せず、add_shortcutに渡す
         return None
 
     def save_order(self, categories_order):
         """JSから届いた新しい並び順を保存する"""
-        data = self.config.get_all()
+        data = self._config.get_all()
 
         # 全ショートカットを一時的に回収
         all_shortcuts = []
@@ -179,7 +311,7 @@ class API:
                 new_categories.append(cat)
 
         data["categories"] = new_categories
-        self.config.save(data)
+        self._config.save(data)
         return True
 
     def get_themes(self):
@@ -189,7 +321,7 @@ class API:
         # sys._MEIPASS を考慮したパス解決を行います。
         if getattr(sys, 'frozen', False):
             # EXE実行時
-            base_dir = sys._MEIPASS
+            base_dir = sys._MEIPASS  # pylint: disable=protected-access
         else:
             # スクリプト実行時（api.py が src/ にあるなら、親の親がルート）
             base_dir = os.path.dirname(
@@ -204,5 +336,5 @@ class API:
             files = [f.replace(".css", "") for f in os.listdir(
                 themes_dir) if f.endswith(".css")]
             return files
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             return ["valorant"]

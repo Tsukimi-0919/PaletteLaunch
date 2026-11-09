@@ -12,5 +12,15 @@
     "prompt_confirm_app_name": "アプリ名を確認:",
     "prompt_new_name": "新しい名前を入力してください:",
     "confirm_delete_shortcut": "このショートカットを削除しますか？",
-    "confirm_delete_category": "このカテゴリーを削除しますか？（中のショートカットもすべて消去されます）"
+    "confirm_delete_category": "このカテゴリーを削除しますか？（中のショートカットもすべて消去されます）",
+    "error_add_shortcut": "ショートカットを追加できませんでした。",
+    "error_invalid_path": "パスが正しくありません。",
+    "error_unc_not_allowed": "ネットワーク上のパス（\\\\ で始まるパス）は登録できません。",
+    "error_extension_not_allowed": "登録できるのは .exe / .lnk / .url / .bat のみです。",
+    "error_path_not_selected": "ファイルを選択し直してください。",
+    "error_file_not_found": "ファイルが見つかりません。",
+    "error_target_not_found": "リンク先が見つかりません。",
+    "error_url_not_allowed": "この URL は登録できません。",
+    "error_invalid_name": "名前が正しくありません。",
+    "error_category_not_found": "カテゴリーが見つかりません。"
 }
