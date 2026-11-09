@@ -116,8 +116,10 @@ def test_font_files_match_readme():
 def _git_check_attr(*paths):
     import shutil
     import subprocess
-    if shutil.which("git") is None or not (ROOT / ".git").exists():
-        pytest.skip("git リポジトリではない")
+    if shutil.which("git") is None:
+        pytest.skip("git が見つかりません (git not found on PATH)")
+    if not (ROOT / ".git").exists():
+        pytest.skip("git リポジトリではありません (not a git repository)")
     out = subprocess.run(["git", "check-attr", "text", "binary", "eol", "--", *paths],
                          cwd=ROOT, capture_output=True, text=True, check=True).stdout
     attrs = {}

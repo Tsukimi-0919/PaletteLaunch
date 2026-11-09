@@ -222,7 +222,7 @@ def test_script_syntax_with_node():
     import subprocess
     node = shutil.which("node")
     if node is None:
-        pytest.skip("node が見つかりません")
+        pytest.skip("node が見つかりません (node not found on PATH)")
     result = subprocess.run([node, "--check", str(SCRIPT_JS)], capture_output=True, text=True,
                             check=False)
     assert result.returncode == 0, result.stderr
