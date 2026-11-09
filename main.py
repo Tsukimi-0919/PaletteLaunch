@@ -29,10 +29,12 @@ def main():
     """
     アプリケーションのメインループを起動する。
     """
-    # settings.json の正しい外付けパスを取得
+    # settings.json の正しい外付けパスを取得（EXE の隣）
     settings_path = get_config_path('settings.json')
-    # APIインスタンスの生成
-    api = API(settings_path)
+    # 初回起動時のひな形（EXE 内部の _internal を指す）
+    example_path = get_resource_path('settings.json.example')
+    # APIインスタンスの生成（どちらも絶対パスで渡す）
+    api = API(os.path.abspath(settings_path), os.path.abspath(example_path))
 
     # UI（HTML）のパスを取得
     html_path = get_resource_path(os.path.join("src", "ui", "index.html"))

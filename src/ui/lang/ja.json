@@ -22,5 +22,11 @@
     "error_target_not_found": "リンク先が見つかりません。",
     "error_url_not_allowed": "この URL は登録できません。",
     "error_invalid_name": "名前が正しくありません。",
-    "error_category_not_found": "カテゴリーが見つかりません。"
+    "error_category_not_found": "カテゴリーが見つかりません。",
+    "error_read_only": "設定ファイルを読み取り専用で開いているため、変更を保存できません。",
+    "error_save_failed": "変更を保存できませんでした。",
+    "notice_read_only": "設定ファイル（settings.json）を正しく読み込めなかったため、読み取り専用で起動しました。この状態での変更は保存されません。\n設定ファイルを直すか、バックアップから戻してから、アプリを起動し直してください。",
+    "notice_restored": "設定ファイル（settings.json）が壊れていたため、1つ前の保存（settings.json.bak）から復元しました。",
+    "notice_recreated": "設定ファイル（settings.json）が空だったため、新しく作成しました。",
+    "notice_corrupt_copy": "壊れていたファイルは {file} として残してあります。"
 }

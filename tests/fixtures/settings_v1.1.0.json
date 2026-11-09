@@ -1,0 +1,50 @@
+{
+    "config": {
+        "theme": "apex",
+        "card_size": "small",
+        "language": "en"
+    },
+    "categories": [
+        {
+            "id": "sample-category-id",
+            "name": "サンプルカテゴリ",
+            "shortcuts": []
+        },
+        {
+            "id": "8f40f602-16c6-49e9-aaa0-d72dd75e1d87",
+            "name": "ゲーム 🎮",
+            "shortcuts": [
+                {
+                    "id": "7484255a-4b64-4ac0-ac86-27e6354e9f3b",
+                    "name": "VALORANT",
+                    "path": "C:\\Riot Games\\Riot Client\\RiotClientServices.exe",
+                    "icon": "data:image/webp;base64,UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoIAAgAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA="
+                },
+                {
+                    "id": "32b30b9c-6327-480c-bc48-acc4a7db02d3",
+                    "name": "Apex Legends",
+                    "path": "steam://rungameid/1172470",
+                    "icon": "data:image/webp;base64,UklGRj4AAABXRUJQVlA4IDIAAADQAQCdASoIAAgAAUAmJaACdLoB+AADsAD+8JCj/4cp8OU+HKf8OU/9QZ8tD5aH63AAAA=="
+                }
+            ]
+        },
+        {
+            "id": "e30d5ac3-c845-4fc1-9001-a0b513bee226",
+            "name": "Tools \"&\" <Utils>",
+            "shortcuts": [
+                {
+                    "id": "32c96afd-e016-4bdc-88f8-f01909608718",
+                    "name": "Notepad（メモ帳）",
+                    "path": "C:\\Windows\\System32\\notepad.exe",
+                    "icon": "data:image/webp;base64,UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoIAAgAAUAmJaACdLoAA5gA/vtV4/+lwf/S4P/pcH/pcH8bss4bpAAA"
+                },
+                {
+                    "id": "562f9a03-c43d-4f66-b721-9c948344b165",
+                    "name": "起動スクリプト",
+                    "path": "D:\\Tools\\start.bat",
+                    "icon": ""
+                }
+            ]
+        }
+    ]
+}

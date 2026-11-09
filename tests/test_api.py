@@ -16,7 +16,7 @@ UNC_EXE = "\\\\server\\share\\game.exe"
 # JS から呼べてよい名前（script.js が使っているメソッドのみ）
 EXPECTED_PUBLIC = {
     "add_category", "add_shortcut", "delete_category", "delete_shortcut",
-    "edit_category", "edit_shortcut", "get_config", "get_themes",
+    "edit_category", "edit_shortcut", "get_config", "get_load_status", "get_themes",
     "launch_executable", "save_order", "select_file", "update_setting",
 }
 
@@ -378,3 +378,152 @@ def test_edit_shortcut_validates_name(api, dialog, cat_id, tmp_path):
 @pytest.mark.parametrize("method", ["delete_category", "delete_shortcut", "launch_executable"])
 def test_non_string_ids_are_rejected(api, method):
     assert getattr(api, method)({"id": "x"}) is False
+
+
+# --- Phase 5: 保存の失敗・読み取り専用モード ----------------------------------
+
+def _seed(api, dialog, tmp_path):
+    """カテゴリー 2 つ・ショートカット 3 つの状態を作る"""
+    assert api.add_category("Second") is True
+    cats = api.get_config()["categories"]
+    first, second = cats[0]["id"], cats[1]["id"]
+    for cat, name in ((first, "a"), (first, "b"), (second, "c")):
+        path = make_file(tmp_path, f"apps/{name}.exe")
+        select(api, dialog, path)
+        assert api.add_shortcut(cat, name, path) == {"ok": True}
+    return api.get_config()
+
+
+def _order(data):
+    return [(c["name"], [s["name"] for s in c["shortcuts"]]) for c in data["categories"]]
+
+
+def _ids(data):
+    cats = {c["name"]: c["id"] for c in data["categories"]}
+    items = {s["name"]: s["id"] for c in data["categories"] for s in c["shortcuts"]}
+    return cats, items
+
+
+def test_get_load_status_normal(api):
+    assert api.get_load_status() == {"read_only": False, "reason": None,
+                                     "restored_from_backup": False, "corrupt_copy": None}
+
+
+@pytest.fixture
+def broken_api(api_module, tmp_path, icon):
+    settings = tmp_path / "settings.json"
+    settings.write_bytes(b'{"config": {"theme": "apex"}, "categories": [')
+    return api_module.API(str(settings)), settings
+
+
+def test_read_only_status_reports_only_file_name(broken_api):
+    api, settings = broken_api
+    status = api.get_load_status()
+    assert status["read_only"] is True
+    assert status["reason"] == "corrupt"
+    assert status["corrupt_copy"].startswith("settings.corrupt-")
+    assert "\\" not in status["corrupt_copy"] and "/" not in status["corrupt_copy"]
+    assert (settings.parent / status["corrupt_copy"]).is_file()
+
+
+def test_read_only_refuses_every_save(broken_api, dialog, tmp_path):
+    api, settings = broken_api
+    before = settings.read_bytes()
+    cat_id = api.get_config()["categories"][0]["id"]
+    path = make_file(tmp_path, "game.exe")
+    select(api, dialog, path)
+
+    assert api.add_shortcut(cat_id, "game", path) == {"ok": False, "error": "read_only"}
+    assert api.add_category("New") is False
+    assert api.edit_category(cat_id, "Renamed") is False
+    assert api.delete_category(cat_id) is False
+    assert api.delete_shortcut("x") is False
+    assert api.update_setting("theme", "valorant") is False
+    assert api.update_setting("language", "en") is False
+    assert api.save_order([{"id": cat_id, "shortcuts": []}]) is False
+
+    assert settings.read_bytes() == before
+    assert not (tmp_path / "settings.json.bak").exists()
+
+
+def test_save_failure_is_reported_and_keeps_file(api, api_module, dialog, cat_id, tmp_path,
+                                                 monkeypatch):
+    settings = tmp_path / "settings.json"
+    before = settings.read_bytes()
+
+    from src.core import config as config_module
+    real_write = config_module.atomic_write
+    disk_full = {"on": True}
+
+    def write(path, writer):
+        if disk_full["on"]:
+            raise OSError(28, "No space left on device")
+        real_write(path, writer)
+
+    monkeypatch.setattr(config_module, "atomic_write", write)
+    path = make_file(tmp_path, "game.exe")
+    select(api, dialog, path)
+    assert api.add_shortcut(cat_id, "game", path) == {"ok": False, "error": "save_failed"}
+    assert api.add_category("New") is False
+    assert api.update_setting("theme", "valorant") is False
+    assert settings.read_bytes() == before
+    assert api.get_load_status()["read_only"] is False
+    # 保存に失敗した選択は残る（空きができてからもう一度押せば登録できる）
+    disk_full["on"] = False
+    assert api.add_shortcut(cat_id, "game", path) == {"ok": True}
+
+
+def test_save_order_reorders(api, dialog, tmp_path):
+    data = _seed(api, dialog, tmp_path)
+    cats, items = _ids(data)
+    order = [{"id": cats["Second"], "shortcuts": [items["a"], items["c"]]},
+             {"id": cats["General"], "shortcuts": [items["b"]]}]
+    assert api.save_order(order) is True
+    assert _order(api.get_config()) == [("Second", ["a", "c"]), ("General", ["b"])]
+
+
+def test_save_order_keeps_missing_items_at_end(api, dialog, tmp_path):
+    """並び順に載っていないカテゴリー・ショートカットは消さずに末尾へ残す"""
+    data = _seed(api, dialog, tmp_path)
+    cats, items = _ids(data)
+    assert api.save_order([{"id": cats["Second"], "shortcuts": [items["b"]]}]) is True
+    # b は Second へ移動。a は元の General の末尾、c は元の Second の末尾に残る
+    assert _order(api.get_config()) == [("Second", ["b", "c"]), ("General", ["a"])]
+
+
+def test_save_order_with_empty_list_changes_nothing(api, dialog, tmp_path):
+    data = _seed(api, dialog, tmp_path)
+    assert api.save_order([]) is True
+    assert _order(api.get_config()) == _order(data)
+
+
+def test_save_order_ignores_duplicate_and_unknown_ids(api, dialog, tmp_path):
+    data = _seed(api, dialog, tmp_path)
+    cats, items = _ids(data)
+    order = [{"id": cats["General"], "shortcuts": [items["c"], "unknown", items["c"], items["a"]]},
+             {"id": "unknown-category", "shortcuts": [items["b"]]},
+             {"id": cats["General"], "shortcuts": [items["b"]]},
+             {"id": cats["Second"], "shortcuts": [items["a"]]}]
+    assert api.save_order(order) is True
+    # 2 回目の General は無視、知らないカテゴリーの中の b も無視（元の General の末尾に残る）
+    assert _order(api.get_config()) == [("General", ["c", "a", "b"]), ("Second", [])]
+
+
+@pytest.mark.parametrize("bad", [
+    None, "x", {"id": "x"}, [None], [{"id": 1, "shortcuts": []}],
+    [{"id": "x"}], [{"id": "x", "shortcuts": "abc"}], [{"id": "x", "shortcuts": [1]}],
+])
+def test_save_order_rejects_malformed_input(api, dialog, tmp_path, bad):
+    _seed(api, dialog, tmp_path)
+    settings = tmp_path / "settings.json"
+    before = settings.read_bytes()
+    assert api.save_order(bad) is False
+    assert settings.read_bytes() == before
+
+
+def test_api_passes_example_path(api_module, tmp_path):
+    example = tmp_path / "example.json"
+    example.write_text('{"config": {}, "categories": [{"id": "e", "name": "Example", "shortcuts": []}]}',
+                       encoding="utf-8")
+    api = api_module.API(str(tmp_path / "settings.json"), str(example))
+    assert api.get_config()["categories"][0]["name"] == "Example"

@@ -57,3 +57,37 @@ def test_single_initialization(script_code):
     assert len(re.findall(r"\bfunction\s+applyTheme\b", script_code)) == 1
     assert "get_settings" not in script_code
     assert "body.className" not in script_code
+
+
+# --- Phase 5: 設定ファイルの状態の通知 ------------------------------------------
+
+LANG_DIR = UI_DIR / "lang"
+PHASE5_KEYS = ["error_read_only", "error_save_failed", "notice_read_only",
+               "notice_restored", "notice_recreated", "notice_corrupt_copy"]
+
+
+@pytest.mark.parametrize("lang", ["ja", "en"])
+def test_phase5_messages_exist(lang):
+    import json
+    messages = json.loads((LANG_DIR / f"{lang}.json").read_text(encoding="utf-8"))
+    for key in PHASE5_KEYS:
+        assert isinstance(messages.get(key), str) and messages[key], key
+    assert "{file}" in messages["notice_corrupt_copy"]
+
+
+def test_api_methods_called_from_js_are_public(script_code):
+    """script.js が呼ぶ API は、すべて公開名の一覧（tests/test_api.py）に入っていること"""
+    from tests.test_api import EXPECTED_PUBLIC
+    called = set(re.findall(r"pywebview\.api\.(\w+)", script_code))
+    assert "get_load_status" in called
+    assert called <= EXPECTED_PUBLIC, called - EXPECTED_PUBLIC
+
+
+def test_every_save_checks_the_result(script_code):
+    """保存する API の結果を捨てずに確認していること（読み取り専用モードで黙って失敗しない）"""
+    for method in ("update_setting", "add_category", "delete_shortcut", "edit_shortcut",
+                   "delete_category", "edit_category", "save_order"):
+        calls = re.findall(rf"^.*pywebview\.api\.{method}\(.*$", script_code, flags=re.M)
+        assert calls, method
+        for line in calls:
+            assert "if (!(await" in line, line

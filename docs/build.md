@@ -59,7 +59,7 @@ Windows PowerShell 5.1 と PowerShell 7 のどちらでも動く。
 | `dist\PaletteLaunch-v<version>-win64.zip` | 配布用 zip（例: `PaletteLaunch-v1.2.0-win64.zip`） |
 
 - zip を展開すると `PaletteLaunch\` フォルダが出てくる。
-- **zip には `settings.json`（と `settings.json.bak`、`settings.corrupt-*.json`）を含めない**。
+- **zip には `settings.json` とそのバックアップ類（`settings.json.bak`、`settings.*.bak.json`、`settings.corrupt-*.json`、保存途中の `settings.json.*.tmp`）を含めない**（docs/backup.md）。
   利用者が上書き展開しても設定が消えないようにするため。`dist\PaletteLaunch\` に `settings.json` があっても
   削除はせず、除外したコピー（`build\package\`、作成後に削除）から zip を作る。
 - 最後に zip の中身を検査し（必須ファイルがあること・`settings.json` 類が無いこと）、サイズと SHA-256 を表示する。

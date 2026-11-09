@@ -1,0 +1,52 @@
+{
+    "config": {
+        "theme": "apex",
+        "card_size": "small",
+        "language": "en"
+    },
+    "categories": [
+        {
+            "id": "sample-category-id",
+            "name": "サンプルカテゴリ",
+            "shortcuts": []
+        },
+        {
+            "id": "a33596a6-dfb7-4553-8259-27c6caeca5d1",
+            "name": "ゲーム 🎮",
+            "shortcuts": [
+                {
+                    "id": "d8fd92f9-d7c7-425c-a3ea-d32b21528af6",
+                    "name": "VALORANT",
+                    "path": "C:\\Users\\Public\\Desktop\\VALORANT.lnk",
+                    "icon": "data:image/webp;base64,UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoIAAgAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=",
+                    "target": "C:\\Riot Games\\Riot Client\\RiotClientServices.exe"
+                },
+                {
+                    "id": "7af9ceb8-c415-40ad-bd60-f61feb338673",
+                    "name": "Apex Legends",
+                    "path": "C:\\Users\\Public\\Desktop\\Apex Legends.url",
+                    "icon": "data:image/webp;base64,UklGRj4AAABXRUJQVlA4IDIAAADQAQCdASoIAAgAAUAmJaACdLoB+AADsAD+8JCj/4cp8OU+HKf8OU/9QZ8tD5aH63AAAA==",
+                    "target": "steam://rungameid/1172470"
+                }
+            ]
+        },
+        {
+            "id": "41955b12-b298-444c-93ff-bc429a2132d4",
+            "name": "Tools \"&\" <Utils>",
+            "shortcuts": [
+                {
+                    "id": "c88af218-622a-4ecd-ace4-0c1fb7583554",
+                    "name": "Notepad（メモ帳）",
+                    "path": "C:\\Windows\\System32\\notepad.exe",
+                    "icon": "data:image/webp;base64,UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoIAAgAAUAmJaACdLoAA5gA/vtV4/+lwf/S4P/pcH/pcH8bss4bpAAA"
+                },
+                {
+                    "id": "dc2925ba-0dd1-4a3b-ba07-d7af53b90c04",
+                    "name": "起動スクリプト",
+                    "path": "D:\\Tools\\start.bat",
+                    "icon": ""
+                }
+            ]
+        }
+    ]
+}

@@ -214,6 +214,10 @@ __marimo__/
 
 # Personal configuration (Crucial!)
 settings.json
+settings.json.bak
+settings.*.bak.json
+settings.corrupt-*.json
+settings.json.*.tmp
 
 # IDE settings
 .vscode/
