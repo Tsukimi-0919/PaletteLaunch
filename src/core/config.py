@@ -6,6 +6,7 @@
   その日のバックアップ settings.YYYYMMDD.bak.json（7日分）を残す。
 - 起動時に読めなかったら、壊れたファイルを settings.corrupt-日時.json に退避し、
   .bak から復元する。復元できなければ読み取り専用モードにして、保存をすべて拒否する。
+- 退避ファイルは、同じ内容のものがあれば作らない。新しいものから CORRUPT_COPY_KEEP 個を残す。
 """
 import copy
 import datetime
@@ -21,6 +22,8 @@ import uuid
 logger = logging.getLogger(__name__)
 
 DAILY_BACKUP_KEEP = 7
+# 起動時に読めなかったファイルの退避（settings.corrupt-日時.json）を残す数
+CORRUPT_COPY_KEEP = 10
 
 DEFAULT_CONFIG = {
     "theme": "valorant",
@@ -313,7 +316,46 @@ class ConfigManager:
         self._status["restored_from_backup"] = True
         return True
 
+    def list_corrupt_copies(self):
+        """退避ファイル（settings.corrupt-YYYYMMDD-HHMMSS[-n].json）のパスを新しい順に返す"""
+        pattern = re.compile(
+            rf"^{re.escape(self._stem)}\.corrupt-(\d{{8}}-\d{{6}})(?:-(\d+))?\.json$")
+        found = []
+        for name in os.listdir(self._folder):
+            m = pattern.match(name)
+            if m:
+                # 新旧はファイル名で決める（copy2 で元ファイルの更新日時が引き継がれるため）
+                found.append((m.group(1), int(m.group(2) or 0), os.path.join(self._folder, name)))
+        return [path for *_, path in sorted(found, reverse=True)]
+
+    def _find_same_corrupt_copy(self, raw, copies):
+        """raw と同じ内容の退避ファイルがあれば、そのパスを返す"""
+        for path in copies:
+            try:
+                if os.path.getsize(path) == len(raw) and self._read_raw(path) == raw:
+                    return path
+            except OSError:
+                continue
+        return None
+
     def _save_corrupt_copy(self):
+        """
+        壊れた settings.json を退避する。同じ内容の退避ファイルがあれば作らずにそれを知らせる。
+        作ったときは、CORRUPT_COPY_KEEP 個を超えた古い退避ファイルを削除する。
+        """
+        try:
+            raw = self._read_raw(self.config_path)
+            copies = self.list_corrupt_copies()
+        except OSError as e:
+            logger.error("壊れた設定ファイルを退避できません: %s", e)
+            return
+
+        same = self._find_same_corrupt_copy(raw, copies)
+        if same:
+            logger.warning("同じ内容の退避ファイルがあるため、新しくは作りません: %s", same)
+            self._status["corrupt_copy"] = os.path.basename(same)
+            return
+
         stamp = _now().strftime("%Y%m%d-%H%M%S")
         for n in range(100):
             suffix = "" if n == 0 else f"-{n}"
@@ -327,6 +369,22 @@ class ConfigManager:
             return
         logger.warning("壊れた設定ファイルを退避しました: %s", path)
         self._status["corrupt_copy"] = os.path.basename(path)
+        self._prune_corrupt_copies(keep=path)
+
+    def _prune_corrupt_copies(self, keep):
+        """CORRUPT_COPY_KEEP 個を超えた古い退避ファイルを削除する（keep は消さない。失敗しても続ける）"""
+        try:
+            copies = self.list_corrupt_copies()
+        except OSError as e:
+            logger.warning("退避ファイルの一覧を取得できません: %s", e)
+            return
+        others = [p for p in copies if os.path.normcase(p) != os.path.normcase(keep)]
+        for old in others[CORRUPT_COPY_KEEP - 1:]:
+            try:
+                os.remove(old)
+                logger.info("古い退避ファイルを削除しました: %s", old)
+            except OSError as e:
+                logger.warning("古い退避ファイルを削除できません: %s", e)
 
     def _get_raw_data(self):
         """ファイルからデータを読み込む（読めなければ読み取り専用モードにする）"""
