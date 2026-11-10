@@ -48,7 +48,7 @@ PR の番号は GitHub（Tsukimi-0919/PaletteLaunch）のもの。マージし�
 
 | # | 問題 | 修正方針 |
 | --- | --- | --- |
-| 1 | `.lnk` の引数・作業フォルダが捨てられる（Valorant が起動せず Riot Client が開く） | `.lnk` / `.url` / `.bat` は解析せず、元ファイルを `os.startfile()` で開く |
+| 1 | `.lnk` の引数・作業フォルダが捨てられる（VALORANT が選ばれていない Riot Client が開く） | `.lnk` / `.url` / `.bat` は解析せず、元ファイルを `os.startfile()` で開く |
 | 2 | `Popen(文字列)` で引数付き文字列が実行され、引用符なしパス問題（`C:\Program.exe`）も起きる | `.exe` は `Popen([path], cwd=dirname)` とリストで渡す |
 | 3 | 管理者権限が必要な exe で WinError 740 | 740 のときは `os.startfile` にフォールバックする |
 | 4 | URL の判定が大文字小文字を区別し、`http` 前方一致が緩い | `urllib.parse` でスキームを取り出し、許可リスト（`steam`, `riot`, `https`, `http`, `com.epicgames.launcher`）で判定する |
