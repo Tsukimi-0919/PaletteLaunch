@@ -3,6 +3,23 @@
 2026-11 のコードレビュー結果にもとづく修正計画。
 Claude Code は **1セッション＝1フェーズ** で進めること。
 
+## 各 Phase の状態
+
+| Phase | 内容 | 状態 | PR | 版 |
+| --- | --- | --- | --- | --- |
+| 0 | テスト基盤の整備 | 完了 | #1 | v1.2.0 |
+| 1 | 起動処理 | 完了 | #1 | v1.2.0 |
+| 2 | API の入力検証 | 完了 | #1 | v1.2.0 |
+| 3 | XSS 対策 | 完了 | #1 | v1.2.0 |
+| 4 | 外部依存の同梱と CSP | 完了 | #1 | v1.2.0 |
+| — | 改行コードの統一（`.gitattributes`。Phase 7 から前倒し） | 完了 | #2 | v1.2.0 |
+| 5 | データ保護 | 完了 | #3 | v1.3.0 |
+| 8 | 見た目の調整 | 完了 | #4 | v1.3.0 |
+| 6 | 使い勝手のバグ | 完了（「実機での確認が必要なこと」は残っている） | #5 | v1.4.0 |
+| 7 | お手入れ | 完了 | 本 PR（`fix/phase7-housekeeping`） | v1.4.0 |
+
+PR の番号は GitHub（Tsukimi-0919/PaletteLaunch）のもの。マージした順は #1 → #2 → #3 → #4 → #5。
+
 ## 全体ルール（Claude Code 向け）
 
 - 作業ブランチ `fix/security-review` 上で作業する。main には直接コミットしない。
@@ -256,6 +273,25 @@ pywebview._jsApiCallback('pywebviewEventHandler',
 - `pip-audit -r requirements.txt` を実行し、結果に応じて依存を更新する。
 - README に開発環境の手順を追記する（Python 3.12 / `py -3.12 -m venv .venv` / `pip install -r requirements-dev.txt` / `pytest`）。Phase 0 で `.python-version` を削除したため。
 - `.gitattributes` を追加して改行コードを統一する（Phase 0 のコミット時に LF/CRLF の警告が出たため）。
+
+### Phase 7 の実施メモ（2026-11-10）
+
+- `.gitattributes` は PR #2 で対応済みのため、対象外とした。
+- `src/core/init.py` を削除した。`docs/architecture.md` を現状に合わせた。`docs/README.md` は architecture.md へのリンクだけにした。
+- README を v1.4.0 の内容で書き直した。✎ ボタン・開発環境の手順・v1.1.0 以前からの移行も含む。
+- `docs/build.md` のコマンド例は、`src\version.py` からバージョンを読み取る形にした（リリースのたびに書き換えなくてよい）。
+- **pip-audit**（requirements.txt と requirements-dev.txt）:
+  - 日本語の Windows では `PYTHONUTF8=1` が必要（requirements の日本語コメントを cp932 として読もうとして `UnicodeDecodeError` になる）。
+  - 結果は次のとおりで、どれも公開から 2 週間以上たった版に更新した。更新後は、requirements.txt・requirements-dev.txt・インストール済みの .venv のどれも 0 件。
+
+  | パッケージ | 更新前 | 件数 | 更新後（公開日） |
+  | --- | --- | --- | --- |
+  | pillow | 11.3.0 | 56 件（別名を含め 73 件）。うち 38 件は 13.0.0 でしか直らない | 13.0.0（2026-10-16） |
+  | pytest | 8.4.2 | 1 件（PYSEC-2026-1845） | 9.1.1（2026-06-19） |
+  | Pygments | 2.19.2 | 1 件（PYSEC-2026-2987） | 2.21.0（2026-08-17） |
+
+  - Pillow 13 でも、Phase 6 の ICO フレームの選び方が変わらないことを確かめた。テストに加えて、Steam の .ico 41 個で Pillow 11.3 と比べ、選ばれるフレーム（順番・サイズ・RGBA の SHA-256）が全件一致した。
+- 追加: `settings.corrupt-*.json` について、同じ内容のものは重複して作らないようにし、新しいものから 10 個（`CORRUPT_COPY_KEEP`）を残すようにした（docs/backup.md）。
 
 ---
 

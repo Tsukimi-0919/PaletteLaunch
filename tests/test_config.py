@@ -320,6 +320,152 @@ def test_corrupt_copy_name_does_not_overwrite(tmp_path, monkeypatch):
     assert (tmp_path / "settings.corrupt-20261109-123456.json").read_bytes() == b"{first"
 
 
+@pytest.fixture
+def clock(monkeypatch):
+    """退避ファイルの名前に使う「今」を、呼ぶたびに 1 秒進める"""
+    state = {"now": datetime.datetime(2026, 11, 10, 9, 0, 0)}
+
+    def now():
+        state["now"] += datetime.timedelta(seconds=1)
+        return state["now"]
+
+    monkeypatch.setattr(config_module, "_now", now)
+    return state
+
+
+def test_same_corrupt_content_is_not_copied_twice(tmp_path, clock):
+    """壊れたまま（.bak も無く読み取り専用で）起動し直しても、同じ内容の退避ファイルは増えない"""
+    m1, _ = open_manager(tmp_path, b"{broken")
+    first = m1.get_status()["corrupt_copy"]
+    m2, path = open_manager(tmp_path, None)
+    assert m2.get_status()["read_only"] is True
+    # 通知は既存の退避ファイルを指す
+    assert m2.get_status()["corrupt_copy"] == first
+    assert corrupt_copies(tmp_path) == [first]
+    assert path.read_bytes() == b"{broken"
+
+
+def test_same_content_found_among_older_copies(tmp_path, clock):
+    """いちばん新しいものでなくても、同じ内容の退避ファイルがあれば作らない"""
+    open_manager(tmp_path, b"{A")
+    (tmp_path / "settings.json").write_bytes(b"{B")
+    open_manager(tmp_path, None)
+    before = corrupt_copies(tmp_path)
+    (tmp_path / "settings.json").write_bytes(b"{A")
+    m, _ = open_manager(tmp_path, None)
+    assert corrupt_copies(tmp_path) == before
+    assert (tmp_path / m.get_status()["corrupt_copy"]).read_bytes() == b"{A"
+
+
+def test_same_size_different_content_is_copied(tmp_path, clock):
+    open_manager(tmp_path, b"{AAAA")
+    (tmp_path / "settings.json").write_bytes(b"{BBBB")
+    m, _ = open_manager(tmp_path, None)
+    assert len(corrupt_copies(tmp_path)) == 2
+    assert (tmp_path / m.get_status()["corrupt_copy"]).read_bytes() == b"{BBBB"
+
+
+def test_same_content_while_running_is_not_copied_twice(tmp_path, clock):
+    """起動時に退避したのと同じ内容に、起動後に壊れても増えない"""
+    open_manager(tmp_path, b"{broken")
+    path = tmp_path / "settings.json"
+    path.write_bytes(valid_settings())
+    m, _ = open_manager(tmp_path, None)
+    path.write_bytes(b"{broken")
+    m.get_all()
+    assert m.get_status()["read_only"] is True
+    assert len(corrupt_copies(tmp_path)) == 1
+
+
+def test_corrupt_copies_keep_newest_ten(tmp_path, clock):
+    assert config_module.CORRUPT_COPY_KEEP == 10
+    for i in range(12):
+        (tmp_path / "settings.json").write_bytes(b"{broken %d" % i)
+        m, _ = open_manager(tmp_path, None)
+        assert (tmp_path / m.get_status()["corrupt_copy"]).is_file()
+
+    names = corrupt_copies(tmp_path)
+    assert len(names) == 10
+    contents = sorted((tmp_path / n).read_bytes() for n in names)
+    assert contents == sorted(b"{broken %d" % i for i in range(2, 12))
+    # 新しい順に並ぶ
+    listed = [os.path.basename(p) for p in m.list_corrupt_copies()]
+    assert listed == sorted(names, reverse=True)
+    assert listed[0] == m.get_status()["corrupt_copy"]
+
+
+def test_corrupt_copy_order_uses_name_not_mtime(tmp_path, clock):
+    """新旧はファイル名の日時と連番で決める（更新日時は元ファイルのものが引き継がれるため使わない）"""
+    for i in range(9):
+        name = f"settings.corrupt-20200101-0000{i:02d}.json"
+        (tmp_path / name).write_bytes(b"{old %d" % i)
+    # 同じ秒の連番つき（-1 の方が新しい）
+    (tmp_path / "settings.corrupt-20200101-000009.json").write_bytes(b"{old 9")
+    (tmp_path / "settings.corrupt-20200101-000009-1.json").write_bytes(b"{old 9-1")
+    # 更新日時は古いものほど新しくしておく
+    for p in tmp_path.glob("settings.corrupt-*.json"):
+        os.utime(p, (2_000_000_000, 2_000_000_000))
+
+    (tmp_path / "settings.json").write_bytes(b"{new")
+    m, _ = open_manager(tmp_path, None)
+    names = corrupt_copies(tmp_path)
+    assert len(names) == 10
+    assert "settings.corrupt-20200101-000000.json" not in names
+    assert "settings.corrupt-20200101-000001.json" not in names
+    assert "settings.corrupt-20200101-000009-1.json" in names
+    assert m.get_status()["corrupt_copy"] in names
+
+
+def test_prune_ignores_other_names(tmp_path, clock):
+    others = ["settings.corrupt-old.json", "settings.corrupt-20200101.json",
+              "other.corrupt-20200101-000000.json", "settings.corrupt-20200101-000000.txt",
+              "settings.json.bak", "settings.20200101.bak.json"]
+    for name in others:
+        (tmp_path / name).write_bytes(b"keep")
+    for i in range(12):
+        (tmp_path / "settings.json").write_bytes(b"{broken %d" % i)
+        open_manager(tmp_path, None)
+    for name in others:
+        assert (tmp_path / name).read_bytes() == b"keep"
+
+
+def test_prune_failure_does_not_stop_startup(tmp_path, clock, monkeypatch, caplog):
+    for i in range(10):
+        (tmp_path / f"settings.corrupt-20200101-0000{i:02d}.json").write_bytes(b"{old %d" % i)
+    (tmp_path / "settings.json.bak").write_bytes(valid_settings("FromBak"))
+
+    def fail(path):
+        raise PermissionError(13, "in use", path)
+
+    monkeypatch.setattr(config_module.os, "remove", fail)
+    (tmp_path / "settings.json").write_bytes(b"{new")
+    with caplog.at_level(logging.WARNING, logger="src.core.config"):
+        m, _ = open_manager(tmp_path, None)
+    status = m.get_status()
+    assert status["restored_from_backup"] is True
+    assert (tmp_path / status["corrupt_copy"]).read_bytes() == b"{new"
+    assert m.get_all()["categories"][0]["name"] == "FromBak"
+    assert len(corrupt_copies(tmp_path)) == 11
+    assert "古い退避ファイルを削除できません" in caplog.text
+
+
+def test_corrupt_copy_compare_read_failure_still_copies(tmp_path, clock, monkeypatch):
+    """既存の退避ファイルが読めなくても（ロック中など）、新しく退避する"""
+    open_manager(tmp_path, b"{broken")
+    first = corrupt_copies(tmp_path)[0]
+    real_read = ConfigManager._read_raw
+
+    def read(self, p):
+        if os.path.basename(p) == first:
+            raise PermissionError(13, "locked")
+        return real_read(self, p)
+
+    monkeypatch.setattr(ConfigManager, "_read_raw", read)
+    m, _ = open_manager(tmp_path, None)
+    assert len(corrupt_copies(tmp_path)) == 2
+    assert m.get_status()["corrupt_copy"] != first
+
+
 def test_read_only_data_is_a_copy(tmp_path):
     m, _ = open_manager(tmp_path, b"{broken")
     m.get_all()["categories"].clear()

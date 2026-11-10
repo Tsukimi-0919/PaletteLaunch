@@ -4,7 +4,7 @@ cffi==2.0.0
 clr_loader==0.2.10
 icoextract==0.2.0
 pefile==2024.8.26
-pillow==11.3.0
+pillow==13.0.0
 proxy_tools==0.1.0
 pycparser==2.23
 pythonnet==3.0.5

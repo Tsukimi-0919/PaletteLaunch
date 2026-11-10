@@ -2,12 +2,12 @@
 -r requirements.txt
 
 # テスト
-pytest==8.4.2
+pytest==9.1.1
 colorama==0.4.6
 iniconfig==2.1.0
 packaging==25.0
 pluggy==1.6.0
-Pygments==2.19.2
+Pygments==2.21.0
 
 # 脆弱性監査
 pip-audit==2.10.1
