@@ -18,13 +18,22 @@ py -3.12 -m venv .venv
 バージョンは **`src\version.py` の `__version__` だけ**で管理する。
 
 ```python
-__version__ = "1.2.0"
+__version__ = "X.Y.Z"   # 数字 3 つ（例: メジャー.マイナー.パッチ）
+```
+
+以降の手順のコマンドは、バージョンを `src\version.py` から読み取って使う（手順書の番号を書き換える必要はない）。
+新しい PowerShell を開いたら、プロジェクトのフォルダで最初に次を実行して `$v` に入れておく
+（`build.ps1` と同じ読み取り方）。
+
+```powershell
+$v = [regex]::Match((Get-Content -Raw -Encoding UTF8 src\version.py), '(?m)^__version__\s*=\s*"(\d+\.\d+\.\d+)"\s*$').Groups[1].Value
+$v   # 表示されたバージョンが正しいことを確かめる（空なら読み取れていない）
 ```
 
 リリースの流れ:
 
 1. `src\version.py` を更新してコミットする。
-2. 同じ番号の git タグを付ける（例: `git tag v1.2.0`）。
+2. 上のコマンドで `$v` を読み直し、同じ番号の git タグを付ける: `git tag "v$v"`
 3. 下の `build.ps1` で zip を作る。
 
 `build.ps1` は、コミットされていない変更があるときや、タグ `v<version>` が HEAD 以外を指しているときに警告を出す（ビルドは止めない）。
@@ -56,7 +65,7 @@ Windows PowerShell 5.1 と PowerShell 7 のどちらでも動く。
 | パス | 内容 |
 |---|---|
 | `dist\PaletteLaunch\` | ビルド結果（onedir） |
-| `dist\PaletteLaunch-v<version>-win64.zip` | 配布用 zip（例: `PaletteLaunch-v1.2.0-win64.zip`） |
+| `dist\PaletteLaunch-v<version>-win64.zip` | 配布用 zip（`<version>` は `src\version.py` のバージョン） |
 
 - zip を展開すると `PaletteLaunch\` フォルダが出てくる。
 - **zip には `settings.json` とそのバックアップ類（`settings.json.bak`、`settings.*.bak.json`、`settings.corrupt-*.json`、保存途中の `settings.json.*.tmp`）を含めない**（docs/backup.md）。
@@ -97,8 +106,9 @@ dist\PaletteLaunch\
 
 ### 4-1. zip の展開と同梱ファイルの確認
 
+`$v` は「2. バージョン番号」のコマンドで `src\version.py` から読み取っておく。
+
 ```powershell
-$v = '1.2.0'   # src\version.py のバージョン
 Expand-Archive dist\PaletteLaunch-v$v-win64.zip -DestinationPath $env:TEMP\pl-check -Force
 dir $env:TEMP\pl-check\PaletteLaunch
 dir $env:TEMP\pl-check\PaletteLaunch\_internal\src\ui\vendor

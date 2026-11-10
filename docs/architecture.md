@@ -4,28 +4,51 @@
 
 ## 技術スタック
 
-* **Backend:** Python (`pywebview`)
-* **Frontend:** HTML5, CSS3, Vanilla JS
-* **Fonts:** Oswald (Google Fonts)
+* **Backend:** Python 3.12 / `pywebview` 6.1（Edge WebView2）/ Pillow・icoextract（アイコン）/ pywin32（.lnk の読み取り・二重起動の防止）
+* **Frontend:** HTML5, CSS3, Vanilla JS（並べ替えは同梱の Sortable.js）
+* **Fonts:** すべて `src/ui/fonts/` に同梱（OFL）。外部への通信はしない（CSP で `'self'` のみ許可）。
+
+| フォント | 使っているところ |
+| :--- | :--- |
+| Oswald | 共通（`style.css`） |
+| Orbitron | Valorant / Cyberpunk |
+| Teko | Apex |
+| Cinzel | MHW / Hydrangea |
+| Shippori Mincho | Hydrangea 系（日本語の明朝体） |
+| Silkscreen | Minecraft |
+| Noto Sans JP | Starry、各テーマの日本語 |
+
+同梱物の出どころ・ハッシュ・更新手順は `src/ui/fonts/README.md` と `src/ui/vendor/README.md`（`tests/test_bundle.py` でハッシュを検査）。
 
 ## ファイル構成と役割
 
 | ファイル | 役割 |
 | :--- | :--- |
-| `main.py` | ウィンドウ生成。`settings.json` の読み書きAPIを提供。 |
-| `settings.json` | ユーザー設定（テーマ、言語、サイズ、ショートカット）の保存先。 |
-| `index.html` | UIの骨組み。JSによる動的描画のベース。 |
-| `style.css` | 共通レイアウト、各テーマの変数、サイズ（標準/小）の制御。 |
-| `script.js` | `settings.json` の反映、多言語化、DOM生成の全ロジック。 |
+| `main.py` | 起動の入口。ログの設定、二重起動の防止（`single_instance`）、`settings.json`（EXE の隣）と `settings.json.example`（EXE 内部）の絶対パスの解決、ドロップの検証（`DropGuard`）の準備、ウィンドウの作成と `API` の登録を行う。設定の読み書きはしない。 |
+| `src/api.py` | JS から呼ばれる API（`js_api`）。公開メソッドはすべて JS から呼べるため、入力（パス・拡張子・名前・設定値・並び順）はここで検証する。内部用のメソッドは `_` で始める。 |
+| `src/core/config.py` | `ConfigManager`: `settings.json` の読み書きを一手に引き受ける。絶対パスだけを受け取り、読み込み時にスキーマを補完し（旧形式も読む）、書き込みは原子的に行う。`.bak`・日ごとのバックアップ・壊れたファイルの退避と、読めなかったときの読み取り専用モードを持つ（docs/backup.md）。 |
+| `src/core/launcher.py` | 起動処理。`.exe` は `Popen([path])`、`.lnk` / `.url` / `.bat` と許可したスキームの URL は `os.startfile`。.lnk / .url の読み取りもここ。 |
+| `src/core/icons.py` | アイコンを 48×48 の WebP（data URI）にする。ICO は透明でないフレームを選ぶ。 |
+| `src/core/drop_guard.py` | ドロップされたファイルのパスの検証（下記）。 |
+| `src/core/single_instance.py` | 二重起動の防止と、起動済みのウィンドウの前面化（下記）。 |
+| `src/core/logging_setup.py` | ログファイルの設定（下記）。 |
+| `src/version.py` | バージョン番号の唯一の置き場所（docs/build.md）。 |
+| `src/ui/index.html` | UI の骨組み。CSP の meta タグを持つ。 |
+| `src/ui/style.css` | 共通レイアウト、サイズ（標準/小）、操作部品の大きさの変数。 |
+| `src/ui/themes/*.css` | テーマごとの色・枠・フォント・装飾。ファイルを置くと `get_themes()` の一覧に出る。 |
+| `src/ui/script.js` | DOM の生成（`createElement` + `textContent`。`innerHTML` は使わない）、多言語化、テーマ・サイズの反映、並べ替え・ドロップ。 |
+| `src/ui/lang/*.json` | 表示文字列（ja / en）。 |
+| `settings.json` | ユーザー設定（テーマ、言語、サイズ、カテゴリー、ショートカット）。EXE と同じフォルダに置かれ、git 管理外・配布 zip にも含めない。 |
 
 ## データフロー
 
-1. **起動:** `main.py` が `settings.json` をロード。
-2. **初期化:** JSが `get_config()` で全データを一括取得。
-3. **適用:** * `body` クラス → テーマ反映
+1. **起動:** `main.py` が二重起動を確かめてから `API` を作る。`API` の中の `ConfigManager` が `settings.json` を読む（無ければ example から作る。壊れていれば退避して `.bak` から復元、だめなら読み取り専用）。
+2. **初期化:** `pywebviewready`（または準備済みなら即時）で JS の `init()` が1回だけ動く。`renderApp()` が `get_themes()`（テーマの一覧）と `get_config()`（全データ）を取得して描画し、`loadAndApplySettings()` が言語・サイズなどの設定を反映し、最後に `notifyLoadStatus()` が `get_load_status()` で読み込み結果（読み取り専用・復元など）を知らせる。
+3. **適用:**
+   * テーマ → `#theme-link` の `href` を `themes/<名前>.css` にし、`body` のテーマのクラスだけを差し替える（全上書きはしない）
    * `#app-container` クラス → `size-small` / `size-medium` 反映
-   * `applyLabels()` → `lang/*.json` を元にUIテキストを更新
-4. **保存:** ユーザーがUI（セレクトボックス等）を変更すると、JS経由で `settings.json` が即座に更新される。
+   * `applyLabels()` → `lang/*.json` を元に UI テキストを更新
+4. **保存:** UI の操作ごとに JS が API（`update_setting`、`add_shortcut`、`save_order` など）を呼び、Python 側で検証してから `ConfigManager` が `settings.json` に保存する。JS から設定全体を書き込む API は無い。
 
 ## 実装の急所
 
